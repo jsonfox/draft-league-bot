@@ -1,0 +1,11 @@
+services:
+  server:
+    env_file:
+      - path: .env
+    build:
+      context: .
+    environment:
+      NODE_ENV: production
+      BOT_TOKEN: ${BOT_TOKEN}
+      APPLICATION_ID: ${APPLICATION_ID}
+      FORWARD_URL: ${FORWARD_URL}
