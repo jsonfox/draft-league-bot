@@ -6,6 +6,7 @@ const {
   MessageFlags,
 } = require("discord.js");
 require("dotenv").config();
+const http = require("http");
 
 const interactionMessages = new Map();
 
@@ -102,4 +103,13 @@ client.ws.on("INTERACTION_CREATE", async (interaction) => {
   }
 });
 
-client.login(process.env.BOT_TOKEN);
+const port = process.env.PORT || 3000;
+http
+  .createServer(function (req, res) {
+    res.write("meow");
+    res.end();
+  })
+  .listen(port, () => {
+    console.log(`Server running on port ${port}`);
+    client.login(process.env.BOT_TOKEN);
+  });
