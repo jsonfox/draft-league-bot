@@ -33,4 +33,4 @@ USER node
 COPY --from=builder /usr/src/app .
 
 # Run the application.
-CMD npm start
+CMD npm run build && npm start

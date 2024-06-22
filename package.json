@@ -1,20 +1,23 @@
 {
   "name": "draft-league-bot",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "src/index.ts",
   "scripts": {
-    "server": "node server.js",
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node dist/index.js",
+    "dev": "NODE_ENV=development nodemon src/index.ts",
+    "build": "tsc --build"
   },
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
     "discord.js": "^14.15.2",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "socket.io": "^4.7.5"
   },
   "devDependencies": {
-    "nodemon": "^3.1.1"
+    "nodemon": "^3.1.4",
+    "tsx": "^4.15.7",
+    "typescript": "^5.5.2"
   }
 }
