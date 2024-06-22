@@ -6,8 +6,6 @@ console.log("Initializing server...");
 
 const port = process.env.PORT || 4000;
 
-const discordClient = new DiscordClient();
-
 const app = new App(async (req, res) => {
   // Handle root path
   if (!req.url) {
@@ -30,6 +28,6 @@ app.listen(port, () => {
   console.log(`Server running on port ${port}`);
   // Don't initialize Discord client in dev environment
   if (process.env.NODE_ENV !== "development") {
-    discordClient.initialize();
+    new DiscordClient();
   }
 });
