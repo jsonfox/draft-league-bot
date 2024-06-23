@@ -123,17 +123,20 @@ export class DiscordClient {
       responseType = InteractionResponseType.DeferredChannelMessageWithSource;
     } else if (interaction.type === InteractionType.MessageComponent) {
       // Check for rate limit (3 seconds)
-      const lastInteraction = this.interactionMessages.get(
-        interaction.message.id
-      );
-      if (lastInteraction && Date.now() - lastInteraction < 3000) {
+      if (this.interactionMessages.has(interaction.message.id)) {
         await sendErrorMessage(
-          "You just pressed that button! Please wait a few seconds."
+          "Please wait a couple seconds before using another button on this message."
         );
         console.log("Rate limited button interaction");
         return;
       }
+
+      // Add 3 second timeout to clear data from map
       this.interactionMessages.set(interaction.message.id, Date.now());
+      setTimeout(() => {
+        this.interactionMessages.delete(interaction.message.id);
+      }, 3000);
+
       forwardPath = "/component";
       responseType = InteractionResponseType.DeferredMessageUpdate;
     } else {
