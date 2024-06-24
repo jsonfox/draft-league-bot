@@ -21,14 +21,17 @@ export const generateRandomId = (length = 16) => {
 /** Parse request body for `content-type`: `application/json` */
 export const parseRequestBody = (req: IncomingMessage) => {
   return new Promise((resolve, reject) => {
-    let body = "";
-    req.on("data", (chunk) => {
-      body += chunk.toString();
+    const body: Buffer[] = [];
+    req.on("data", (chunk: any) => {
+      if (chunk instanceof Uint8Array) chunk = Buffer.from(chunk);
+      if (typeof chunk === "string") chunk = Buffer.from(chunk);
+      if (!Buffer.isBuffer(chunk)) return;
+      body.push(chunk);
     });
 
     req.on("end", () => {
       try {
-        resolve(JSON.parse(body));
+        resolve(Buffer.concat(body as any).toString());
       } catch (error) {
         reject("Invalid JSON");
       }
@@ -39,6 +42,7 @@ export const parseRequestBody = (req: IncomingMessage) => {
 export const validateOverlayData = (data: OverlayData) => {
   const error = new Error("Invalid overlay data");
   // Referring to top level keys in `data` as keys and nested keys in `teams[side]` as props
+  if (!data || typeof data !== "object") throw error;
 
   // Iterate over keys in `data`
   for (const key in data) {

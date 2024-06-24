@@ -10,17 +10,43 @@ import { Server } from "socket.io";
 import "./env";
 
 export class AppRequest extends http.IncomingMessage {
-  body: any;
+  body?: object;
 
   constructor(req: HttpRequestType) {
     super(req.socket);
     Object.assign(this, req);
-    // Parse body if content-type is application/json
-    if (req.headers["content-type"] === "application/json") {
-      parseRequestBody(req).then((body) => {
-        this.body = body;
-      });
+  }
+
+  async json() {
+    if (this.headers["content-type"] !== "application/json") {
+      throw new Error("Content type is not application/json");
     }
+
+    let data = await new Promise((resolve, reject) => {
+      const body: Buffer[] = [];
+      this.on("data", (chunk: any) => {
+        if (chunk instanceof Uint8Array) chunk = Buffer.from(chunk);
+        if (typeof chunk === "string") chunk = Buffer.from(chunk);
+        if (!Buffer.isBuffer(chunk)) return;
+        body.push(chunk);
+      });
+
+      this.on("end", () => {
+        try {
+          resolve(Buffer.concat(body as any).toString());
+        } catch (error) {
+          reject("Invalid JSON");
+        }
+      });
+    });
+
+    if (typeof data === "string") {
+      data = JSON.parse(data);
+    } else if (typeof data !== "object") {
+      throw new Error("Invalid JSON");
+    }
+    this.body = data as object;
+    return this.body;
   }
 }
 
@@ -35,12 +61,31 @@ export class AppResponse extends http.ServerResponse<HttpRequestType> {
     return this;
   }
 
-  json(body: object) {
-    this.writeHead(200, { "Content-Type": "application/json" });
-    this.send(JSON.stringify(body));
+  json(data: object) {
+    try {
+      const body = JSON.stringify(data);
+      // Set content type to application/json if body is not empty
+      if (!!body) {
+        this.writeHead(200, { "Content-Type": "application/json" });
+      }
+      // Send response
+      this.send(body);
+      return;
+    } catch (err) {
+      console.error("Error sending JSON response:", err);
+      this.writeHead(500);
+      this.write("Internal server error");
+      this.end();
+    }
   }
 
-  send(message: string | Buffer) {
+  send(message?: string | Buffer) {
+    // Send 204 status if message is undefined
+    if (message === undefined) {
+      this.writeHead(204);
+      this.end();
+    }
+
     // Set status code to 200 if not set
     if (!this.statusCode) {
       this.status(200);
@@ -52,6 +97,7 @@ export class AppResponse extends http.ServerResponse<HttpRequestType> {
 
   sendStatus(code: number) {
     this.writeHead(code);
+    this.write(http.STATUS_CODES[code]);
     this.end();
   }
 }
@@ -61,7 +107,7 @@ type RouteHandler = (req: AppRequest, res: AppResponse) => void;
 export class App {
   server: http.Server;
   io: Server;
-  origin = process.env.NODE_ENV === "development" ? "*" : process.env.ORIGIN_URL;
+  origin?: string;
   overlay: OverlayData;
   routes: {
     [path: string]: Partial<Record<HttpMethod, RouteHandler>>;
@@ -70,19 +116,25 @@ export class App {
   listen: typeof http.Server.prototype.listen;
 
   constructor(defaultHandler: RouteHandler) {
-    if (!this.origin) {
-      throw new Error("ORIGIN_URL is not set");
+    if (process.env.NODE_ENV !== "development") {
+      this.origin ??= process.env.ORIGIN_URL;
     }
-
     this.defaultRouteHandler = defaultHandler;
 
     // Create http server
     this.server = http.createServer(async (req, res) => {
       try {
-        // Enable CORS
-        res.setHeader("Access-Control-Allow-Origin", origin);
+        // CORS headers
+        res.setHeader("Access-Control-Allow-Origin", this.origin ?? "*");
         res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE");
         res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+        // Handle preflight requests
+        if (req.method === "OPTIONS") {
+          res.writeHead(204);
+          res.end();
+          return;
+        }
 
         // Execute handler
         const path = req.url ?? "";
@@ -91,10 +143,10 @@ export class App {
         const handler = this.routes[path]?.[method] ?? this.defaultRouteHandler;
         handler(new AppRequest(req), new AppResponse(req, res));
 
-        // Send 404 if response not sent
+        // Acknowledge if response is not sent
         if (!res.writableEnded) {
-          res.writeHead(404);
-          res.write("Not found");
+          res.writeHead(200);
+          res.write("Success");
           res.end();
         }
       } catch (err) {
@@ -110,12 +162,14 @@ export class App {
     this.listen = this.server.listen.bind(this.server);
 
     // Create socket.io server
-    this.io = new Server(this.server, {
+    const io = new Server(this.server, {
       cors: {
-        origin: this.origin,
+        origin: this.origin ?? "*",
         methods: ["GET", "POST"],
       },
     });
+
+    this.io = io;
 
     // Initialize overlay data
     this.overlay = {
@@ -137,7 +191,7 @@ export class App {
     };
   }
 
-  updateOverlay(data: OverlayData) {
+  updateOverlay(data: any) {
     validateOverlayData(data);
     this.overlay = data;
     this.io.of("/overlay").emit("overlay", this.overlay);

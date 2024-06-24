@@ -14,8 +14,20 @@ const app = new App(async (req, res) => {
   return;
 });
 
+app.GET("/overlay", async (req, res) => {
+  console.log(req.url);
+  res.json(app.overlay);
+});
+
 app.POST("/overlay", async (req, res) => {
-  app.updateOverlay(req.body);
+  try {
+    const data = await req.json();
+    app.updateOverlay(data);
+    res.sendStatus(200);
+    console.log(Date.now(), "Overlay updated");
+  } catch (err) {
+    res.status(400).send("Invalid overlay data");
+  }
 });
 
 // Handle connections at /overlay namespace
