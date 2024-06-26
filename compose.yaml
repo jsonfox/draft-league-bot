@@ -8,4 +8,4 @@ services:
       NODE_ENV: production
       BOT_TOKEN: ${BOT_TOKEN}
       APPLICATION_ID: ${APPLICATION_ID}
-      ORIGIN: ${ORIGIN_URL}
+      ORIGIN_URL: ${ORIGIN_URL}

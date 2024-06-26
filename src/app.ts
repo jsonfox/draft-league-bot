@@ -1,5 +1,5 @@
 import * as http from "http";
-import { parseRequestBody, validateOverlayData } from "./helpers";
+import { validateOverlayData } from "./helpers";
 import {
   HttpMethod,
   HttpRequestType,
