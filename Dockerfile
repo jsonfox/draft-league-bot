@@ -32,3 +32,7 @@ RUN --mount=type=bind,source=package.json,target=package.json \
 COPY --from=build ${DIR}/dist ./dist
 
 CMD ["node", "dist/index.js"]
+
+EXPOSE 3000
+
+ENV PORT 3000
