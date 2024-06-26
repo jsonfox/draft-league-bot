@@ -2,7 +2,6 @@ import { WebSocket } from "ws";
 import "./env";
 import {
   GatewayIntentBits,
-  Routes,
   InteractionResponseType,
   MessageFlags,
   GatewayDispatchEvents,
@@ -14,15 +13,19 @@ import {
   GatewayReceivePayload,
   InteractionType,
   GatewayInteractionCreateDispatchData,
+  GatewayHelloData,
 } from "discord-api-types/v10";
 
 const resolveBitfield = (bits: number[]) => {
   return bits.reduce((acc, bit) => acc | bit, 0);
 };
 
+const DISCORD_API_VERSION = "v10";
+
 export class DiscordClient {
   token: string;
   applicationId: string;
+  baseUrl = `https://discord.com/api/${DISCORD_API_VERSION}`;
   forwardUrl: string;
   ws: WebSocket;
   interactionMessages: Map<string, number> = new Map();
@@ -56,20 +59,12 @@ export class DiscordClient {
       const { t, op, d } = payload as GatewayReceivePayload;
 
       if (op === GatewayOpcodes.Hello) {
-        // Start heartbeat
-        const { heartbeat_interval } = d;
-        setInterval(() => {
-          ws.send(
-            JSON.stringify({
-              op: GatewayOpcodes.Heartbeat,
-              d: null,
-            })
-          );
-        }, heartbeat_interval);
+        this.heartbeat(d as GatewayHelloData);
       }
 
       if (t === GatewayDispatchEvents.Ready) {
-        console.log("Connected to Discord Gateway");
+        const { user } = d;
+        console.log("Logged in as", user.username);
       }
 
       if (t === GatewayDispatchEvents.InteractionCreate) {
@@ -100,7 +95,7 @@ export class DiscordClient {
     // Function to reply with ephemeral error message
     const sendErrorMessage = (content: string) => {
       return this.post(
-        Routes.interactionCallback(interaction.id, interaction.token),
+        `${this.baseUrl}/interactions/${interaction.id}/${interaction.token}/callback`,
         {
           body: {
             type: InteractionResponseType.ChannelMessageWithSource,
@@ -145,7 +140,7 @@ export class DiscordClient {
 
     // Send deferred response
     await this.post(
-      Routes.interactionCallback(interaction.id, interaction.token),
+      `${this.baseUrl}/interactions/${interaction.id}/${interaction.token}/callback`,
       {
         body: {
           type: responseType,
@@ -203,5 +198,16 @@ export class DiscordClient {
     };
 
     this.ws.send(JSON.stringify(loginPayload));
+  }
+
+  heartbeat({ heartbeat_interval }: GatewayHelloData) {
+    setInterval(() => {
+      this.ws.send(
+        JSON.stringify({
+          op: GatewayOpcodes.Heartbeat,
+          d: null,
+        })
+      );
+    }, heartbeat_interval);
   }
 }
