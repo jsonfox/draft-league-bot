@@ -1,36 +1,34 @@
 # syntax=docker/dockerfile:1
 
-# Comments are provided throughout this file to help you get started.
-# If you need more help, visit the Dockerfile reference guide at
-# https://docs.docker.com/go/dockerfile-reference/
-
-# Want to help us make this template better? Share your feedback here: https://forms.gle/ybq9Krt8jtBL3iCk7
-
 ARG NODE_VERSION=20.9.0
 
-FROM node:${NODE_VERSION}-alpine as base
+ARG DIR=/usr/src/app
 
-# Use production node environment by default.
-ENV NODE_ENV production
+#Build stage
+FROM node:${NODE_VERSION}-alpine AS build
 
-WORKDIR /usr/src/app
+WORKDIR ${DIR}
 
-FROM base as builder
+COPY package*.json .
 
-RUN apk add --no-cache git
-RUN apk add --no-cache openssh
+RUN npm install
 
-RUN git clone https://github.com/jsonfox/draft-league-bot.git .
+COPY . .
 
-RUN npm ci --omit=dev
+RUN npm run build
 
-FROM base
+#Production stage
+FROM node:${NODE_VERSION}-alpine AS production
 
-# Run the application as a non-root user.
-USER node
+WORKDIR ${DIR}
 
-# Copy the rest of the source files into the image.
-COPY --from=builder /usr/src/app .
+COPY package*.json .
 
-# Run the application.
-CMD npm start
+RUN --mount=type=bind,source=package.json,target=package.json \
+    --mount=type=bind,source=package-lock.json,target=package-lock.json \
+    --mount=type=cache,target=/root/.npm \
+    npm ci --omit=dev
+
+COPY --from=build ${DIR}/dist ./dist
+
+CMD ["node", "dist/index.js"]

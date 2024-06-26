@@ -8,4 +8,4 @@ services:
       NODE_ENV: production
       BOT_TOKEN: ${BOT_TOKEN}
       APPLICATION_ID: ${APPLICATION_ID}
-      FORWARD_URL: ${FORWARD_URL}
+      ORIGIN: ${ORIGIN_URL}
