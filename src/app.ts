@@ -1,107 +1,93 @@
 import * as http from "http";
 import { validateOverlayData } from "./helpers";
-import {
-  HttpMethod,
-  HttpRequestType,
-  HttpResponseType,
-  OverlayData,
-} from "./types";
+import { HttpMethod, OverlayData } from "./types";
 import { Server } from "socket.io";
 import "./env";
 import { env } from "./env";
 
-export class AppRequest extends http.IncomingMessage {
-  body?: object;
+declare module "http" {
+  interface IncomingMessage {
+    body?: object;
+    json(): Promise<object>;
+  }
+  interface ServerResponse {
+    json(data: object): void;
+    send(message?: string | Buffer, status?: number): void;
+    sendStatus(code: number): void;
+  }
+}
 
-  constructor(req: HttpRequestType) {
-    super(req.socket);
-    Object.assign(this, req);
+// req
+http.IncomingMessage.prototype.json = async function () {
+  if (this.headers["content-type"] !== "application/json") {
+    throw new Error("Content type is not application/json");
   }
 
-  async json() {
-    if (this.headers["content-type"] !== "application/json") {
-      throw new Error("Content type is not application/json");
-    }
-
-    let data = await new Promise((resolve, reject) => {
-      const body: Buffer[] = [];
-      this.on("data", (chunk: any) => {
-        if (chunk instanceof Uint8Array) chunk = Buffer.from(chunk);
-        if (typeof chunk === "string") chunk = Buffer.from(chunk);
-        if (!Buffer.isBuffer(chunk)) return;
-        body.push(chunk);
-      });
-
-      this.on("end", () => {
-        try {
-          resolve(Buffer.concat(body as any).toString());
-        } catch (error) {
-          reject("Invalid JSON");
-        }
-      });
+  let data = await new Promise((resolve, reject) => {
+    const body: Buffer[] = [];
+    this.on("data", (chunk: any) => {
+      if (chunk instanceof Uint8Array) chunk = Buffer.from(chunk);
+      if (typeof chunk === "string") chunk = Buffer.from(chunk);
+      if (!Buffer.isBuffer(chunk)) return;
+      body.push(chunk);
     });
 
-    if (typeof data === "string") {
-      data = JSON.parse(data);
-    } else if (typeof data !== "object") {
-      throw new Error("Invalid JSON");
-    }
-    this.body = data as object;
-    return this.body;
-  }
-}
-
-export class AppResponse extends http.ServerResponse<HttpRequestType> {
-  constructor(req: HttpRequestType, res: HttpResponseType) {
-    super(req);
-    Object.assign(this, res);
-  }
-
-  status(code: number) {
-    this.writeHead(code);
-    return this;
-  }
-
-  json(data: object) {
-    try {
-      const body = JSON.stringify(data);
-      // Set content type to application/json if body is not empty
-      if (!!body) {
-        this.writeHead(200, { "Content-Type": "application/json" });
+    this.on("end", () => {
+      try {
+        resolve(Buffer.concat(body as any).toString());
+      } catch (error) {
+        reject("Invalid JSON");
       }
-      // Send response
-      this.send(body);
-      return;
-    } catch (err) {
-      console.error("Error sending JSON response:", err);
-      this.writeHead(500);
-      this.write("Internal server error");
-      this.end();
-    }
+    });
+  });
+
+  if (typeof data === "string") {
+    data = JSON.parse(data);
+  } else if (typeof data !== "object") {
+    throw new Error("Invalid JSON");
   }
+  this.body = data as object;
+  return this.body;
+};
 
-  send(message?: string | Buffer) {
-    // Send 204 status if message is undefined
-    if (message === undefined) {
-      this.writeHead(204);
-      this.end();
-    }
-
-    // Set status code to 200 if not set
-    if (!this.statusCode) {
-      this.status(200);
+// res
+http.ServerResponse.prototype.json = function (data: object) {
+  try {
+    const body = JSON.stringify(data);
+    // Set content type to application/json if body is not empty
+    if (!!body) {
+      this.writeHead(200, { "Content-Type": "application/json" });
     }
     // Send response
-    this.write(message);
+    this.send(body);
+  } catch (err) {
+    console.error("Error sending JSON response:", err);
+    this.writeHead(500);
+    this.send("Internal server error");
+  }
+};
+
+http.ServerResponse.prototype.send = function (
+  message?: string | Buffer,
+  code = 200
+) {
+  // Send 204 status if message is undefined
+  if (message === undefined) {
+    !this.statusCode && this.writeHead(204);
     this.end();
   }
 
-  sendStatus(code: number) {
+  // Set status code to 200 if not set
+  if (!this.statusCode) {
     this.writeHead(code);
-    this.write(http.STATUS_CODES[code]);
-    this.end();
   }
-}
+
+  // Send response
+  this.end(message);
+};
+
+type AppRequest = http.IncomingMessage;
+type AppResponse = http.ServerResponse<http.IncomingMessage>;
 
 type RouteHandler = (req: AppRequest, res: AppResponse) => void;
 
@@ -113,12 +99,9 @@ export class App {
   routes: {
     [path: string]: Partial<Record<HttpMethod, RouteHandler>>;
   } = {};
-  defaultRouteHandler: RouteHandler;
   listen: typeof http.Server.prototype.listen;
 
-  constructor(defaultHandler: RouteHandler) {
-    this.defaultRouteHandler = defaultHandler;
-
+  constructor() {
     // Create http server
     this.server = http.createServer(async (req, res) => {
       try {
@@ -133,36 +116,40 @@ export class App {
           return;
         }
 
-        // Use GET / as a health check, block other requests that don't match origin
-        const path = req.url ?? "";
+        if (req.url === "/favicon.ico") {
+          res.writeHead(204);
+          res.end();
+          return;
+        }
+
+        const path = req.url ?? "/";
+
+        // Check if request is from allowed origin
         if (
           (req.method !== "GET" || !!path) &&
           !req.headers.origin?.includes(this.origin)
         ) {
           res.writeHead(403);
-          res.write("Forbidden");
-          res.end();
+          res.end("Forbidden");
           return;
         }
 
         // Execute handler
         const method: HttpMethod =
           (req.method as HttpMethod | undefined) ?? "GET";
-        const handler = this.routes[path]?.[method] ?? this.defaultRouteHandler;
-        handler(new AppRequest(req), new AppResponse(req, res));
+        this.routes[path]?.[method]?.(req, res);
 
         // Acknowledge if response is not sent
         if (!res.writableEnded) {
           res.writeHead(200);
-          res.write("Success");
-          res.end();
+          res.end("Success");
+          return;
         }
       } catch (err) {
         // Log error and send 500 status
         console.error(err);
         res.writeHead(500);
-        res.write("Internal server error");
-        res.end();
+        res.end("Internal server error");
       }
       return;
     });
@@ -230,9 +217,5 @@ export class App {
 
   DELETE(path: `/${string}`, handler: RouteHandler) {
     this.addRoute("DELETE", path, handler);
-  }
-
-  setDefaultRouteHandler(handler: RouteHandler) {
-    this.defaultRouteHandler = handler;
   }
 }

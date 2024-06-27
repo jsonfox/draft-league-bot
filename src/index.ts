@@ -1,16 +1,15 @@
 import { App } from "./app";
 import { DiscordClient } from "./discord-client";
+import "./env";
 
 console.log("Initializing server...");
 
 const port = process.env.PORT || 4000;
 
-const app = new App(async (req, res) => {
-  // Handle root path
-  if (!req.url) {
-    res.send("App is running");
-  }
-  return;
+const app = new App();
+
+app.GET("/", (req, res) => {
+  res.send("App is running");
 });
 
 app.GET("/overlay", async (req, res) => {
@@ -21,11 +20,13 @@ app.POST("/overlay", async (req, res) => {
   try {
     const data = await req.json();
     app.updateOverlay(data);
-    res.sendStatus(200);
     console.log(Date.now(), "Overlay updated");
   } catch (err) {
-    res.status(400).send("Invalid overlay data");
+    console.log("Error updating overlay:", err);
+    res.send("Invalid overlay data", 400);
+    return;
   }
+  res.send("Overlay updated");
 });
 
 // Handle connections at /overlay namespace
