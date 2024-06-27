@@ -8,6 +8,7 @@ import {
 } from "./types";
 import { Server } from "socket.io";
 import "./env";
+import { env } from "./env";
 
 export class AppRequest extends http.IncomingMessage {
   body?: object;
@@ -107,7 +108,7 @@ type RouteHandler = (req: AppRequest, res: AppResponse) => void;
 export class App {
   server: http.Server;
   io: Server;
-  origin?: string;
+  origin = env.ORIGIN_URL;
   overlay: OverlayData;
   routes: {
     [path: string]: Partial<Record<HttpMethod, RouteHandler>>;
@@ -116,19 +117,15 @@ export class App {
   listen: typeof http.Server.prototype.listen;
 
   constructor(defaultHandler: RouteHandler) {
-    if (process.env.NODE_ENV !== "development") {
-      this.origin ??= process.env.ORIGIN_URL;
-    }
     this.defaultRouteHandler = defaultHandler;
 
     // Create http server
     this.server = http.createServer(async (req, res) => {
       try {
         // CORS headers
-        res.setHeader("Access-Control-Allow-Origin", this.origin ?? "*");
+        res.setHeader("Access-Control-Allow-Origin", this.origin);
         res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE");
         res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
         // Handle preflight requests
         if (req.method === "OPTIONS") {
           res.writeHead(204);
@@ -136,8 +133,19 @@ export class App {
           return;
         }
 
-        // Execute handler
+        // Use GET / as a health check, block other requests that don't match origin
         const path = req.url ?? "";
+        if (
+          (req.method !== "GET" || !!path) &&
+          !req.headers.origin?.includes(this.origin)
+        ) {
+          res.writeHead(403);
+          res.write("Forbidden");
+          res.end();
+          return;
+        }
+
+        // Execute handler
         const method: HttpMethod =
           (req.method as HttpMethod | undefined) ?? "GET";
         const handler = this.routes[path]?.[method] ?? this.defaultRouteHandler;
@@ -164,7 +172,7 @@ export class App {
     // Create socket.io server
     const io = new Server(this.server, {
       cors: {
-        origin: this.origin ?? "*",
+        origin: this.origin,
         methods: ["GET", "POST"],
       },
     });

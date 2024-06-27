@@ -1,6 +1,5 @@
 import { App } from "./app";
 import { DiscordClient } from "./discord-client";
-import "./env";
 
 console.log("Initializing server...");
 
@@ -15,7 +14,6 @@ const app = new App(async (req, res) => {
 });
 
 app.GET("/overlay", async (req, res) => {
-  console.log(req.url);
   res.json(app.overlay);
 });
 

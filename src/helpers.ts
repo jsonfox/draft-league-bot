@@ -57,3 +57,4 @@ export const validateOverlayData = (data: OverlayData) => {
     } // End key iteration for `teams[side]`
   } // End key iteration for `teams`
 };
+
