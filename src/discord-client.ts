@@ -1,5 +1,5 @@
 import { WebSocket } from "ws";
-import "./env";
+import { env } from "./env";
 import {
   GatewayIntentBits,
   InteractionResponseType,
@@ -32,18 +32,9 @@ export class DiscordClient {
 
   constructor() {
     // Check for required environment variables
-    if (!process.env.BOT_TOKEN) {
-      throw new Error("Missing BOT_TOKEN");
-    }
-    this.token = process.env.BOT_TOKEN;
-    if (!process.env.APPLICATION_ID) {
-      throw new Error("Missing APPLICATION_ID");
-    }
-    this.applicationId = process.env.APPLICATION_ID;
-    if (!process.env.ORIGIN_URL) {
-      throw new Error("Missing ORIGIN_URL");
-    }
-    this.forwardUrl = process.env.ORIGIN_URL + "/api/discord/interactions";
+    this.token = env.BOT_TOKEN;
+    this.applicationId = env.APPLICATION_ID;
+    this.forwardUrl = env.ORIGIN_URL + "/api/discord/interactions";
 
     // Initialize WebSocket
     const ws = new WebSocket(
@@ -70,7 +61,7 @@ export class DiscordClient {
       if (t === GatewayDispatchEvents.InteractionCreate) {
         const interaction = d as GatewayInteractionCreateDispatchData;
 
-        if (interaction?.application_id !== process.env.APPLICATION_ID) return;
+        if (interaction?.application_id !== env.APPLICATION_ID) return;
         console.log("Received interaction", interaction.id);
 
         this.forwardInteraction(interaction);
@@ -85,7 +76,7 @@ export class DiscordClient {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: "Bot " + process.env.BOT_TOKEN,
+        Authorization: "Bot " + env.BOT_TOKEN,
       },
       body: JSON.stringify(data),
     });
