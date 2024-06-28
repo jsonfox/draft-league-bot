@@ -4,7 +4,7 @@ import { HttpMethod, OverlayData } from "./types";
 import { Server } from "socket.io";
 import "./env";
 import { env } from "./env";
-import { isFunctionTypeNode } from "typescript";
+import { logger } from "./logger";
 
 declare module "http" {
   interface IncomingMessage {
@@ -62,7 +62,7 @@ http.ServerResponse.prototype.json = function (data: object) {
     // Send response
     this.send(body);
   } catch (err) {
-    console.error("Error sending JSON response:", err);
+    logger.error("Error sending JSON response:", err);
     this.writeHead(500);
     this.send("Internal server error");
   }
@@ -162,7 +162,7 @@ export class App {
         }
       } catch (err) {
         // Log error and send 500 status
-        console.error(err);
+        logger.error(err);
         res.writeHead(500);
         res.end("Internal server error");
       }

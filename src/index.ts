@@ -1,8 +1,9 @@
 import { App } from "./app";
 import { DiscordClient } from "./discord-client";
 import "./env";
+import { logger } from "./logger";
 
-console.log("Initializing server...");
+logger.init("Initializing server...");
 
 const port = process.env.PORT || 4000;
 
@@ -24,9 +25,9 @@ app.POST("/overlay", async (req, res) => {
   try {
     const data = await req.json();
     app.updateOverlay(data);
-    console.log(Date.now(), "Overlay updated");
+    logger.info("Overlay updated");
   } catch (err) {
-    console.log("Error updating overlay:", err);
+    logger.warn("Error updating overlay:", err);
     res.send("Invalid overlay data", 400);
     return;
   }
@@ -40,7 +41,7 @@ app.io.of("/overlay").on("connection", (socket) => {
 
 // Start server
 app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+  logger.ready(`Server running on port ${port}`);
   // Don't initialize Discord client in dev environment
   if (process.env.NODE_ENV !== "development") {
     new DiscordClient();

@@ -15,6 +15,7 @@ import {
   GatewayInteractionCreateDispatchData,
   GatewayHelloData,
 } from "discord-api-types/v10";
+import { logger } from "./logger";
 
 const resolveBitfield = (bits: number[]) => {
   return bits.reduce((acc, bit) => acc | bit, 0);
@@ -55,14 +56,14 @@ export class DiscordClient {
 
       if (t === GatewayDispatchEvents.Ready) {
         const { user } = d;
-        console.log("Logged in as", user.username);
+        logger.ready("Logged in as", user.username);
       }
 
       if (t === GatewayDispatchEvents.InteractionCreate) {
         const interaction = d as GatewayInteractionCreateDispatchData;
 
         if (interaction?.application_id !== env.APPLICATION_ID) return;
-        console.log("Received interaction", interaction.id);
+        logger.info("Received interaction", interaction.id);
 
         this.forwardInteraction(interaction);
       }
@@ -113,7 +114,7 @@ export class DiscordClient {
         await sendErrorMessage(
           "Please wait a couple seconds before using another button on this message."
         );
-        console.log("Rate limited button interaction");
+        logger.info("Rate limited button interaction");
         return;
       }
 
@@ -143,7 +144,7 @@ export class DiscordClient {
     // Forward interaction to main app
     const res = await this.post(this.forwardUrl + forwardPath, interaction);
 
-    console.log("Forwarded response status:", res.status, res.statusText);
+    logger.info("Forwarded response status:", res.status, res.statusText);
 
     if (!res.ok) {
       try {
@@ -151,7 +152,7 @@ export class DiscordClient {
       } catch (err) {
         const error = err as Error;
         if (!error.message.includes("acknowledged")) {
-          console.error(error.message);
+          logger.error(error.message);
         }
       }
     }

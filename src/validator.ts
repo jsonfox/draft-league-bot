@@ -1,3 +1,5 @@
+import { logger } from "./logger";
+
 function isnt(arg: unknown, type: string) {
   return new Error(`\`${arg}\` is not a ${type}`);
 }
@@ -45,7 +47,7 @@ class BaseValidator {
     try {
       return this.parse();
     } catch (err) {
-      return console.error((err as Error).message);
+      return logger.error((err as Error).message);
     }
   }
 
