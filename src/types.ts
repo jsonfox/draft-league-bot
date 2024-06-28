@@ -8,11 +8,13 @@ export type OverlayTeam = {
   logoUrl: string;
 };
 
+// Having Record<string, any> allows for any additional properties to be added to the OverlayData object without having to update the type definition
 export type OverlayData = {
   blue: OverlayTeam;
   red: OverlayTeam;
-  maxScore: 1 | 3 | 5;
-};
+  maxScore: number;
+  cameraControlsCover?: boolean;
+} & Record<string, any>;
 
 export type HttpRequestType = http.IncomingMessage;
 

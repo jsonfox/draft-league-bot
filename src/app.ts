@@ -4,6 +4,7 @@ import { HttpMethod, OverlayData } from "./types";
 import { Server } from "socket.io";
 import "./env";
 import { env } from "./env";
+import { isFunctionTypeNode } from "typescript";
 
 declare module "http" {
   interface IncomingMessage {
@@ -91,13 +92,22 @@ type AppResponse = http.ServerResponse<http.IncomingMessage>;
 
 type RouteHandler = (req: AppRequest, res: AppResponse) => void;
 
+/** Class for main application server */
 export class App {
   server: http.Server;
   io: Server;
   origin = env.ORIGIN_URL;
   overlay: OverlayData;
   routes: {
-    [path: string]: Partial<Record<HttpMethod, RouteHandler>>;
+    [path: string]: Partial<
+      Record<
+        HttpMethod,
+        {
+          isPublic: boolean;
+          handler: RouteHandler;
+        }
+      >
+    >;
   } = {};
   listen: typeof http.Server.prototype.listen;
 
@@ -124,20 +134,25 @@ export class App {
 
         const path = req.url ?? "/";
 
-        // Check if request is from allowed origin
-        if (
-          (req.method !== "GET" || !!path) &&
-          !req.headers.origin?.includes(this.origin)
-        ) {
+        // Execute handler
+        const method: HttpMethod =
+          (req.method as HttpMethod | undefined) ?? "GET";
+        const route = this.routes[path]?.[method];
+
+        // Check if route exists
+        if (!route) {
+          res.writeHead(404);
+          res.end("Not found");
+          return;
+        }
+
+        // Check if route is protected
+        if (!route.isPublic && !req.headers.origin?.includes(this.origin)) {
           res.writeHead(403);
           res.end("Forbidden");
           return;
         }
-
-        // Execute handler
-        const method: HttpMethod =
-          (req.method as HttpMethod | undefined) ?? "GET";
-        this.routes[path]?.[method]?.(req, res);
+        route.handler(req, res);
 
         // Acknowledge if response is not sent
         if (!res.writableEnded) {
@@ -182,7 +197,8 @@ export class App {
         secondaryColor: "",
         logoUrl: "",
       },
-      maxScore: 3,
+      maxScore: 2,
+      cameraControlsCover: false,
     };
   }
 
@@ -192,30 +208,38 @@ export class App {
     this.io.of("/overlay").emit("overlay", this.overlay);
   }
 
-  addRoute(method: HttpMethod, path: `/${string}`, handler: RouteHandler) {
+  addRoute(
+    method: HttpMethod,
+    path: `/${string}`,
+    handler: RouteHandler,
+    isPublic: boolean
+  ) {
     if (!this.routes[path]) {
       this.routes[path] = {};
     }
-    this.routes[path][method] = handler;
+    this.routes[path][method] = {
+      handler,
+      isPublic,
+    };
   }
 
-  GET(path: `/${string}`, handler: RouteHandler) {
-    this.addRoute("GET", path, handler);
+  GET(path: `/${string}`, handler: RouteHandler, isPublic = false) {
+    this.addRoute("GET", path, handler, isPublic);
   }
 
-  POST(path: `/${string}`, handler: RouteHandler) {
-    this.addRoute("POST", path, handler);
+  POST(path: `/${string}`, handler: RouteHandler, isPublic = false) {
+    this.addRoute("POST", path, handler, isPublic);
   }
 
-  PUT(path: `/${string}`, handler: RouteHandler) {
-    this.addRoute("PUT", path, handler);
+  PUT(path: `/${string}`, handler: RouteHandler, isPublic = false) {
+    this.addRoute("PUT", path, handler, isPublic);
   }
 
-  PATCH(path: `/${string}`, handler: RouteHandler) {
-    this.addRoute("PATCH", path, handler);
+  PATCH(path: `/${string}`, handler: RouteHandler, isPublic = false) {
+    this.addRoute("PATCH", path, handler, isPublic);
   }
 
-  DELETE(path: `/${string}`, handler: RouteHandler) {
-    this.addRoute("DELETE", path, handler);
+  DELETE(path: `/${string}`, handler: RouteHandler, isPublic = false) {
+    this.addRoute("DELETE", path, handler, isPublic);
   }
 }

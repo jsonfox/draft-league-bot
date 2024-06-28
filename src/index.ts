@@ -8,9 +8,13 @@ const port = process.env.PORT || 4000;
 
 const app = new App();
 
-app.GET("/", (req, res) => {
-  res.send("App is running");
-});
+app.GET(
+  "/",
+  (req, res) => {
+    res.send("App is running");
+  },
+  true
+);
 
 app.GET("/overlay", async (req, res) => {
   res.json(app.overlay);

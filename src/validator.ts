@@ -37,7 +37,7 @@ class BaseValidator {
     for (const validator of this.useValidators) {
       validator(this.value);
     }
-    
+
     return this.value;
   }
 
@@ -145,6 +145,15 @@ export class NumberValidator extends BaseValidator {
     });
     return this;
   }
+
+  integer() {
+    this.useValidators.push((arg: number) => {
+      if (!Number.isInteger(arg)) {
+        throw new Error(`\`${arg}\` must be an integer`);
+      }
+    });
+    return this;
+  }
 }
 
 export const v = {
@@ -168,6 +177,13 @@ export const v = {
       parse(arg: unknown) {
         validate(arg);
         return arg;
+      },
+    };
+  },
+  boolean(arg?: unknown) {
+    return {
+      parse() {
+        return !!arg;
       },
     };
   },
