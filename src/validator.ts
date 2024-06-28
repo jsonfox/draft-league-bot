@@ -17,7 +17,7 @@ function isNumber(arg: unknown): asserts arg is number {
 }
 
 function isObject(arg: unknown): asserts arg is object {
-  if (typeof arg !== "object") {
+  if (typeof arg !== "object" && arg !== null) {
     throw isnt(arg, "object");
   }
 }

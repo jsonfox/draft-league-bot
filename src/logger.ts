@@ -67,6 +67,7 @@ class Logger {
   }
 
   protected log(level: keyof typeof levels, ...args: any[]) {
+    if (process.env.DISABLE_LOGGING === "true") return;
     if (levels[level].severity < levels[this.level].severity) return;
     const message = args
       .map((arg) => {
