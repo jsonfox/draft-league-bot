@@ -72,10 +72,12 @@ class Logger {
   }
 
   protected getPrefix(level: LogLevel) {
+    const MAX_LEVEL_LENGTH = 5;
+    const padding = " ".repeat(MAX_LEVEL_LENGTH - level.length);
     return `[${this.format(formatting.cyan, this.timestamp)}] [${this.format(
       levels[level].format,
       level.toUpperCase()
-    )}]:`;
+    )}]${padding}:`;
   }
 
   protected log(level: keyof typeof levels, ...args: any[]) {
