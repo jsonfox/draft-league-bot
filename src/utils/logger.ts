@@ -1,4 +1,4 @@
-  /* tslint:disable:no-console */
+/* tslint:disable:no-console */
 
 type FormatString = `\x1b[${string}m`;
 
@@ -53,8 +53,18 @@ class Logger {
   }
 
   protected get timestamp() {
-    const date = new Date();
-    return `${date.getMonth()}-${date.getDate()}-${date.getFullYear()} @ ${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}`;
+    const dateString = new Date().toLocaleString("en-US", {
+      timeZone: "America/New_York",
+      month: "2-digit",
+      day: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      timeZoneName: "shortGeneric",
+    });
+    const [day, time] = dateString.split(", ");
+    return `${day.replace(/\//g, "-")} @ ${time}`;
   }
 
   protected format(formatStr: FormatString, content: string) {
