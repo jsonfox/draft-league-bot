@@ -4,13 +4,16 @@ import { env } from "../src/utils/env";
 describe("app", () => {
   beforeAll((done) => {
     process.env.DISABLE_LOGGING = "true";
+    // Start server for test suite
     app.listen(4000, () => {
       done();
     });
   });
 
   afterAll((done) => {
+    // Close server after test suite
     app.close(() => {
+      console.log("Test suite complete, server closed");
       setTimeout(done, 100);
     });
   });
@@ -179,6 +182,18 @@ describe("app", () => {
       expect(data).toEqual(newOverlayData);
       expect(data).not.toEqual(defaultOverlayData);
       expect(data).toEqual(app.overlay);
+    });
+  });
+
+  describe("socket.io server", () => {
+    test("should be initialized", () => {
+      expect(app.io).toBeDefined();
+    });
+
+    describe("/overlay namespace", () => {
+      test("should be in namespaces map", () => {
+        expect(app.io._nsps.keys()).toContain("/overlay");
+      });
     });
   });
 });

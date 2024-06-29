@@ -24,7 +24,7 @@ export class BaseValidator {
     }
   }
 
-  validate(func: (arg: unknown) => boolean) {
+  custom(func: (arg: unknown) => boolean) {
     this.useValidators.push((arg) => {
       if (!func(arg)) {
         throw new Error(`\`${arg}\` does not match validator`);

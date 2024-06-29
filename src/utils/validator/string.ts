@@ -25,7 +25,7 @@ export class StringValidator extends BaseValidator {
     return this;
   }
 
-  min(length: number) {
+  minLength(length: number) {
     this.useValidators.push((arg: string) => {
       if (arg.length < length) {
         throw new Error(
@@ -36,7 +36,7 @@ export class StringValidator extends BaseValidator {
     return this;
   }
 
-  max(length: number) {
+  maxLength(length: number) {
     this.useValidators.push((arg: string) => {
       if (arg.length > length) {
         throw new Error(`\`${arg}\` must be at most ${length} characters long`);
