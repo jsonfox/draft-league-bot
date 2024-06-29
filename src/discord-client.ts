@@ -1,5 +1,5 @@
 import { WebSocket } from "ws";
-import { env } from "./env";
+import { env } from "./utils/env";
 import {
   GatewayIntentBits,
   InteractionResponseType,
@@ -15,9 +15,10 @@ import {
   GatewayInteractionCreateDispatchData,
   GatewayHelloData,
 } from "discord-api-types/v10";
-import { logger } from "./logger";
+import { logger } from "./utils/logger";
 
 const resolveBitfield = (bits: number[]) => {
+  /* tslint:disable-next-line no-bitwise */
   return bits.reduce((acc, bit) => acc | bit, 0);
 };
 
@@ -31,7 +32,7 @@ export class DiscordClient {
   ws: WebSocket;
   interactionMessages: Map<string, number> = new Map();
 
-  constructor() {
+  constructor(cb?: () => void) {
     // Check for required environment variables
     this.token = env.BOT_TOKEN;
     this.applicationId = env.APPLICATION_ID;
@@ -44,10 +45,11 @@ export class DiscordClient {
 
     ws.on("open", () => {
       this.initialize();
+      cb?.();
     });
 
     ws.on("message", (data: any) => {
-      let payload = JSON.parse(data);
+      const payload = JSON.parse(data);
       const { t, op, d } = payload as GatewayReceivePayload;
 
       if (op === GatewayOpcodes.Hello) {
@@ -72,7 +74,11 @@ export class DiscordClient {
     this.ws = ws;
   }
 
-  post(url: string, data: any) {
+  static start(cb?: () => void) {
+    return new DiscordClient(cb);
+  }
+
+  private post(url: string, data: any) {
     return fetch(url, {
       method: "POST",
       headers: {
@@ -83,7 +89,7 @@ export class DiscordClient {
     });
   }
 
-  async forwardInteraction(interaction: GatewayInteractionCreateDispatchData) {
+  private async forwardInteraction(interaction: GatewayInteractionCreateDispatchData) {
     // Function to reply with ephemeral error message
     const sendErrorMessage = (content: string) => {
       return this.post(
@@ -158,7 +164,7 @@ export class DiscordClient {
     }
   }
 
-  initialize() {
+  private initialize() {
     // Payload for initial handshake
     const loginPayload: GatewayIdentify = {
       op: GatewayOpcodes.Identify,
@@ -192,7 +198,7 @@ export class DiscordClient {
     this.ws.send(JSON.stringify(loginPayload));
   }
 
-  heartbeat({ heartbeat_interval }: GatewayHelloData) {
+  private heartbeat({ heartbeat_interval }: GatewayHelloData) {
     setInterval(() => {
       this.ws.send(
         JSON.stringify({

@@ -6,7 +6,8 @@
     "start": "node dist/index.js",
     "dev": "NODE_ENV=development nodemon src/index.ts",
     "build": "tsc --build",
-    "test": "jest --runInBand --detectOpenHandles --forceExit"
+    "test": "jest --runInBand --detectOpenHandles --forceExit",
+    "lint": "tslint -c tslint.json 'src/**/*.ts'"
   },
   "author": "",
   "license": "ISC",

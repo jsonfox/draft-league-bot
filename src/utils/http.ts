@@ -67,13 +67,15 @@ http.ServerResponse.prototype.send = function (
   code = 200
 ) {
   if (this.writableEnded) {
-    logger.warn("Response has already been sent");
+    logger.debug("Response has already been sent");
     return;
   }
 
   // Send 204 status if message is undefined
   if (message === undefined) {
-    !this.statusCode && this.writeHead(204);
+    if (!this.statusCode) {
+      this.writeHead(204);
+    }
     this.end();
   }
 

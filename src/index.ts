@@ -1,7 +1,7 @@
 import { DiscordClient } from "./discord-client";
-import { logger } from "./logger";
+import { logger } from "./utils/logger";
 import app from "./app";
-import "./env";
+import "./utils/env";
 
 logger.init("Initializing server...");
 
@@ -12,6 +12,6 @@ app.listen(port, () => {
   logger.ready(`Server running on port ${port}`);
   // Don't initialize Discord client in dev environment
   if (process.env.NODE_ENV !== "development") {
-    new DiscordClient();
+    DiscordClient.start();
   }
 });

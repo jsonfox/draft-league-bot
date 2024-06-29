@@ -1,5 +1,5 @@
 import app from "../src/app";
-import { env } from "../src/env";
+import { env } from "../src/utils/env";
 
 describe("app", () => {
   beforeAll((done) => {
@@ -60,14 +60,17 @@ describe("app", () => {
   describe("POST /overlay", () => {
     let newOverlayData: any;
 
-    const post = (data: any) => {
-      return fetch("http://localhost:4000/overlay", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: env.AUTH_TOKEN,
-        },
-        body: JSON.stringify(data),
+    const testInvalidData = (description: string, data: any) => {
+      test(description, async () => {
+        const res = await fetch("http://localhost:4000/overlay", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: env.AUTH_TOKEN,
+          },
+          body: JSON.stringify(data),
+        });
+        expect(res.status).toBe(400);
       });
     };
 
@@ -87,96 +90,87 @@ describe("app", () => {
           secondaryColor: "#FF00FF",
           logoUrl: "https://example.com/red.png",
         },
+        maxScore: 2,
       };
     });
 
-    test("POST /overlay with invalid data structure", async () => {
-      const res = await post({ data: "invalid" });
-      expect(res.status).toBe(400);
-    });
+    testInvalidData("with empty data", {});
 
-    test("POST /overlay with null team data", async () => {
-      const res = await post(Object.assign({}, newOverlayData, { blue: null }));
-      expect(res.status).toBe(400);
-    });
+    testInvalidData("with null data", null);
 
-    test("POST /overlay with negative team score", async () => {
-      let res = await post(
-        Object.assign({}, newOverlayData, { blue: { score: -1 } })
-      );
-      expect(res.status).toBe(400);
-    });
+    testInvalidData("with invalid data structure", { data: "invalid" });
 
-    test("POST /overlay with team score greater than max score", async () => {
-      let res = await post(
-        Object.assign({}, newOverlayData, { blue: { score: 5 } })
-      );
-      expect(res.status).toBe(400);
-    });
+    testInvalidData(
+      "with null team data",
+      Object.assign({}, newOverlayData, { blue: null })
+    );
 
-    test("POST /overlay with empty team name", async () => {
-      let res = await post(
-        Object.assign({}, newOverlayData, { blue: { name: "" } })
-      );
-      expect(res.status).toBe(400);
-    });
+    testInvalidData(
+      "with negative team score",
+      Object.assign({}, newOverlayData, { blue: { score: -1 } })
+    );
 
-    test("POST /overlay with empty team name", async () => {
-      let res = await post(
-        Object.assign({}, newOverlayData, { blue: { name: "" } })
-      );
-      expect(res.status).toBe(400);
-    });
+    testInvalidData(
+      "with team score greater than max score",
+      Object.assign({}, newOverlayData, { blue: { score: 5 } })
+    );
 
-    test("POST /overlay with empty team primary color", async () => {
-      let res = await post(
-        Object.assign({}, newOverlayData, { blue: { primaryColor: "" } })
-      );
-      expect(res.status).toBe(400);
-    });
+    testInvalidData(
+      "with empty team name",
+      Object.assign({}, newOverlayData, { blue: { name: "" } })
+    );
 
-    test("POST /overlay with empty team secondary color", async () => {
-      let res = await post(
-        Object.assign({}, newOverlayData, { blue: { secondaryColor: "" } })
-      );
-      expect(res.status).toBe(400);
-    });
+    testInvalidData(
+      "with empty team name",
+      Object.assign({}, newOverlayData, { blue: { name: "" } })
+    );
 
-    test("POST /overlay with empty team logo URL", async () => {
-      let res = await post(
-        Object.assign({}, newOverlayData, { blue: { logoUrl: "" } })
-      );
-      expect(res.status).toBe(400);
-    });
+    testInvalidData(
+      "with empty team primary color",
+      Object.assign({}, newOverlayData, { blue: { primaryColor: "" } })
+    );
 
-    test("POST /overlay with invalid team logo URL", async () => {
-      let res = await post(
-        Object.assign({}, newOverlayData, { blue: { logoUrl: "invalid" } })
-      );
-      expect(res.status).toBe(400);
-    });
+    testInvalidData(
+      "with empty team secondary color",
+      Object.assign({}, newOverlayData, { blue: { secondaryColor: "" } })
+    );
 
-    test("POST /overlay with max score", async () => {
-      let res = await post(
-        Object.assign({}, newOverlayData, { maxScore: "invalid" })
-      );
-      expect(res.status).toBe(400);
-    });
+    testInvalidData(
+      "with empty team logo URL",
+      Object.assign({}, newOverlayData, { blue: { logoUrl: "" } })
+    );
 
-    test("POST /overlay with max score less than 1", async () => {
-      let res = await post(Object.assign({}, newOverlayData, { maxScore: 0 }));
-      expect(res.status).toBe(400);
-    });
+    testInvalidData(
+      "with invalid team logo URL",
+      Object.assign({}, newOverlayData, { blue: { logoUrl: "invalid" } })
+    );
 
-    test("POST /overlay with valid data", async () => {
-      const res = await post(newOverlayData);
+    testInvalidData(
+      "with max score",
+      Object.assign({}, newOverlayData, { maxScore: "invalid" })
+    );
+
+    testInvalidData(
+      "with max score less than 1",
+      Object.assign({}, newOverlayData, { maxScore: 0 })
+    );
+
+    test("with valid data", async () => {
+      const res = await fetch("http://localhost:4000/overlay", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: env.AUTH_TOKEN,
+        },
+        body: JSON.stringify(newOverlayData),
+      });
       expect(res.status).toBe(200);
 
       const data = await res.text();
       expect(data).toBe("Overlay updated");
     });
 
-    test("GET /overlay after update", async () => {
+    test("overlay data after update", async () => {
       const res = await fetch("http://localhost:4000/overlay", {
         headers: {
           Authorization: env.AUTH_TOKEN,

@@ -1,9 +1,9 @@
-import { validateOverlayData } from "./helpers";
-import { HttpMethod, OverlayData } from "./types";
+import { validateOverlayData } from "./utils/helpers";
+import { HttpMethod, OverlayData } from "./utils/types";
 import { Server } from "socket.io";
-import { env } from "./env";
-import { logger } from "./logger";
-import http from "./http";
+import { env } from "./utils/env";
+import { logger } from "./utils/logger";
+import http from "./utils/http";
 
 type AppServerRequest = http.IncomingMessage;
 type AppServerResponse = http.ServerResponse<http.IncomingMessage>;

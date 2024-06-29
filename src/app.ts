@@ -1,5 +1,5 @@
 import { AppServer } from "./server";
-import { logger } from "./logger";
+import { logger } from "./utils/logger";
 
 const app = new AppServer();
 

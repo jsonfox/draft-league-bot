@@ -1,3 +1,5 @@
+  /* tslint:disable:no-console */
+
 type FormatString = `\x1b[${string}m`;
 
 const getTextFormatter = (format: number): FormatString => `\x1b[${format}m`;
