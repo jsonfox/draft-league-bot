@@ -1,5 +1,7 @@
 # NEDL Server
 
+**NEW**: Added tslint and jest for code maintenance
+
 This server is a containerized application built as a microservice for the main Draft League app. 
 
 I also wanted to use it as an opportunity to build my own services without using frameworks such as Discord.js and Express (I plan to replace SocketIO implementation in the future). While the source code for the main application isn't public, I wanted to make this public as example code for making a Discord gateway bot without using Discord.js, and an HTTP server without using Express.
@@ -19,3 +21,9 @@ I also wanted to use it as an opportunity to build my own services without using
 **Problem**: I wanted to add a dynamic overlay that could be used as an OBS Browser Source for stream overlays. For the overlay to receive updates after the initial page load, it would need to utilize WebSockets. Due to the serverless architecture of the main application, I couldn't just add a WebSocket server inside the NextJS app.
 
 **Solution**: Since I was already using a process for the Discord client, I decided to add HTTP and WebSocket servers to this app. These are currently used for REST endpoints and a SocketIO server for managing the stream overlay. I created a server framework similar to Express that can be expanded upon in the future as more features are added.
+
+### Data Validation
+
+**Problem**: Even though access to the server is restricted, I wanted to be able to add another layer of data validation for things like POST routes. This would make the server easier to maintain and for future development in the main app that utilizes this server.
+
+**Solution**: I made a small validation library based on Zod. One benefit is being able to validate environment variables and access them with type assertions within the code, instead of having to validate process.env variables in the places they are used. I am currently using it to validate overlay data sent to the server, but I plan to expand the library in the future as I use it more in the project.
