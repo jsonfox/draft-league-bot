@@ -112,6 +112,15 @@ export class AppServer {
       },
     });
 
+    io.on("connection", (socket) => {
+      if (
+        socket.request.headers.origin !== this.origin &&
+        socket.handshake.query.authorization !== env.AUTH_TOKEN
+      ) {
+        socket.disconnect(true);
+      }
+    });
+
     this.io = io;
 
     // Initialize overlay data
