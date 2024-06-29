@@ -75,7 +75,7 @@ describe("app", () => {
     };
 
     beforeEach(() => {
-      newOverlayData = {
+      newOverlayData = Object.assign({}, defaultOverlayData, {
         blue: {
           score: 1,
           name: "Team Blue",
@@ -90,8 +90,7 @@ describe("app", () => {
           secondaryColor: "#FF00FF",
           logoUrl: "https://example.com/red.png",
         },
-        maxScore: 2,
-      };
+      });
     });
 
     testInvalidData("with empty data", {});

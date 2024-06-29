@@ -1,9 +1,9 @@
-import { validateOverlayData } from "./utils/helpers";
 import { HttpMethod, OverlayData } from "./utils/types";
 import { Server } from "socket.io";
 import { env } from "./utils/env";
 import { logger } from "./utils/logger";
 import http from "./utils/http";
+import { v } from "./utils/validator";
 
 type AppServerRequest = http.IncomingMessage;
 type AppServerResponse = http.ServerResponse<http.IncomingMessage>;
@@ -18,7 +18,6 @@ export class AppServer {
   server: http.Server;
   io: Server;
   origin = env.ORIGIN_URL;
-  overlay: OverlayData;
   routes: {
     [path: string]: Partial<
       Record<
@@ -32,6 +31,24 @@ export class AppServer {
   } = {};
   listen: typeof http.Server.prototype.listen;
   close: typeof http.Server.prototype.close;
+  overlay: OverlayData = {
+    blue: {
+      score: 0,
+      name: "",
+      primaryColor: "",
+      secondaryColor: "",
+      logoUrl: "",
+    },
+    red: {
+      score: 0,
+      name: "",
+      primaryColor: "",
+      secondaryColor: "",
+      logoUrl: "",
+    },
+    maxScore: 2,
+    cameraControlsCover: false,
+  };
 
   constructor() {
     // Create http server
@@ -122,32 +139,35 @@ export class AppServer {
     });
 
     this.io = io;
-
-    // Initialize overlay data
-    this.overlay = {
-      blue: {
-        score: 0,
-        name: "",
-        primaryColor: "",
-        secondaryColor: "",
-        logoUrl: "",
-      },
-      red: {
-        score: 0,
-        name: "",
-        primaryColor: "",
-        secondaryColor: "",
-        logoUrl: "",
-      },
-      maxScore: 2,
-      cameraControlsCover: false,
-    };
   }
 
   updateOverlay(data: any) {
-    validateOverlayData(data);
+    const teamSchema = v.object({
+      score: v.number().integer().min(0),
+      name: v.string().isNotEmpty(),
+      primaryColor: v.string().isNotEmpty(),
+      secondaryColor: v.string().isNotEmpty(),
+      logoUrl: v.string().isNotEmpty(),
+    });
+
+    const overlaySchema = v.object({
+      maxScore: v.number().integer().min(1),
+      blue: teamSchema,
+      red: teamSchema,
+      cameraControlsCover: v.boolean(),
+    });
+
+    try {
+      overlaySchema.parse(data);
+    } catch (err) {
+      logger.warn("Invalid overlay data");
+      return false;
+    }
+
     this.overlay = data;
     this.io.of("/overlay").emit("overlay", this.overlay);
+    logger.info("Overlay updated");
+    return true;
   }
 
   addRoute(

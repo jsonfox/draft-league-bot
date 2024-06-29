@@ -7,6 +7,7 @@ declare module "http" {
     json(): Promise<object>;
   }
   interface ServerResponse {
+    status(code: number): this;
     json(data: object): void;
     send(message?: string | Buffer, status?: number): void;
   }
@@ -46,6 +47,11 @@ http.IncomingMessage.prototype.json = async function () {
 };
 
 // res
+http.ServerResponse.prototype.status = function (code: number) {
+  this.writeHead(code);
+  return this;
+};
+
 http.ServerResponse.prototype.json = function (data: object) {
   try {
     const body = JSON.stringify(data);

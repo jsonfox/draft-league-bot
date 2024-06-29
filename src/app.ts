@@ -18,14 +18,18 @@ app.GET("/overlay", async (req, res) => {
 });
 
 app.POST("/overlay", async (req, res) => {
-  try {
-    const data = await req.json();
-    app.updateOverlay(data);
-    logger.info("Overlay updated");
+  const data = await req.json().catch(() => {
+    logger.error("Error parsing JSON");
+  });
+  if (!data) {
+    res.status(400).send("Invalid JSON");
+    return;
+  }
+  const updated = app.updateOverlay(data);
+  if (updated) {
     res.send("Overlay updated");
-  } catch (err) {
-    logger.warn("Error updating overlay");
-    res.send("Invalid overlay data", 400);
+  } else {
+    res.status(400).send("Invalid overlay data");
   }
   return;
 });
