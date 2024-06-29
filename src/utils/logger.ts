@@ -1,3 +1,5 @@
+/* tslint:disable:no-console */
+
 type FormatString = `\x1b[${string}m`;
 
 const getTextFormatter = (format: number): FormatString => `\x1b[${format}m`;
@@ -51,8 +53,18 @@ class Logger {
   }
 
   protected get timestamp() {
-    const date = new Date();
-    return `${date.getMonth()}-${date.getDate()}-${date.getFullYear()} @ ${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}`;
+    const dateString = new Date().toLocaleString("en-US", {
+      timeZone: "America/New_York",
+      month: "2-digit",
+      day: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      timeZoneName: "shortGeneric",
+    });
+    const [day, time] = dateString.split(", ");
+    return `${day.replace(/\//g, "-")} @ ${time}`;
   }
 
   protected format(formatStr: FormatString, content: string) {
@@ -60,13 +72,16 @@ class Logger {
   }
 
   protected getPrefix(level: LogLevel) {
+    const MAX_LEVEL_LENGTH = 5;
+    const padding = " ".repeat(MAX_LEVEL_LENGTH - level.length);
     return `[${this.format(formatting.cyan, this.timestamp)}] [${this.format(
       levels[level].format,
       level.toUpperCase()
-    )}]:`;
+    )}]${padding}:`;
   }
 
   protected log(level: keyof typeof levels, ...args: any[]) {
+    if (process.env.DISABLE_LOGGING === "true") return;
     if (levels[level].severity < levels[this.level].severity) return;
     const message = args
       .map((arg) => {

@@ -5,7 +5,9 @@
   "scripts": {
     "start": "node dist/index.js",
     "dev": "NODE_ENV=development nodemon src/index.ts",
-    "build": "tsc --build"
+    "build": "tsc --build",
+    "test": "jest --runInBand --detectOpenHandles --forceExit",
+    "lint": "tslint -c tslint.json 'src/**/*.ts'"
   },
   "author": "",
   "license": "ISC",
@@ -18,7 +20,10 @@
     "typescript": "^5.5.2"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "jest": "^29.7.0",
     "nodemon": "^3.1.4",
+    "ts-jest": "^29.1.5",
     "tsx": "^4.15.7"
   }
 }
