@@ -1,7 +1,11 @@
+import { DiscordClient } from "./discord-client";
 import { AppServer } from "./server";
 import { logger } from "./utils/logger";
+import { env } from "./utils/env";
 
 const app = new AppServer();
+const client =
+  process.env.NODE_ENV === "development" ? null : new DiscordClient();
 
 app.GET(
   "/",
@@ -31,6 +35,21 @@ app.POST("/overlay", async (req, res) => {
   } else {
     res.status(400).send("Invalid overlay data");
   }
+  return;
+});
+
+app.POST("/restart-client", async (req, res) => {
+  if (!client) {
+    res.status(400).send("Client not initialized");
+    return;
+  }
+  if (!req.headers["x-token"]?.includes(env.BOT_TOKEN)) {
+    res.status(403).send("Forbidden");
+    return;
+  }
+  logger.init("Restarting client...");
+  client.restart();
+  res.send()
   return;
 });
 

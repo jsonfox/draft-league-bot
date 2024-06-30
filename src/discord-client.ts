@@ -181,6 +181,16 @@ export class DiscordClient {
     return new DiscordClient(cb);
   }
 
+  close() {
+    if (!this.ws.CLOSED) this.ws.close();
+  }
+
+  restart() {
+    this.close();
+    const ws = new WebSocket(this.gatewayUrl);
+    this.ws = this.addSocketListeners(ws);
+  }
+
   /** Reusable fetch init since all fetch requests in this class use the same init */
   private post(url: string, data: any) {
     return fetch(url, {

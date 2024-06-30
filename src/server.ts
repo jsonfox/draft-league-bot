@@ -158,16 +158,19 @@ export class AppServer {
     });
 
     try {
-      overlaySchema.parse(data);
+      const parsed = overlaySchema.parse(data);
+      if (parsed.blue.name === parsed.red.name) {
+        throw new Error("Team names cannot be the same");
+      }
+      this.overlay = parsed;
+      this.io.of("/overlay").emit("overlay", this.overlay);
+      logger.info("Overlay updated");
+      return true;
     } catch (err) {
-      logger.warn("Invalid overlay data");
+      logger.debug(err);
+      logger.warn("Received invalid overlay data");
       return false;
     }
-
-    this.overlay = data;
-    this.io.of("/overlay").emit("overlay", this.overlay);
-    logger.info("Overlay updated");
-    return true;
   }
 
   addRoute(
