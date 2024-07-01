@@ -1,4 +1,3 @@
-import { DiscordClient } from "./discord-client";
 import { logger } from "./utils/logger";
 import app from "./app";
 import "./utils/env";
@@ -10,4 +9,16 @@ const port = process.env.PORT || 4000;
 // Start server
 app.listen(port, () => {
   logger.ready(`Server running on port ${port}`);
+});
+
+process.on("uncaughtException", (error) => {
+  logger.error("Uncaught Exception thrown", error);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  logger.error("Unhandled Rejection at:", promise, "reason:", reason);
+});
+
+process.on("exit", () => {
+  logger.init("Server shutting down...");
 });

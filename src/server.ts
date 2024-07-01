@@ -164,7 +164,7 @@ export class AppServer {
       }
       this.overlay = parsed;
       this.io.of("/overlay").emit("overlay", this.overlay);
-      logger.info("Overlay updated");
+      logger.debug("Overlay updated");
       return true;
     } catch (err) {
       logger.debug(err);

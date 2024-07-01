@@ -9,6 +9,14 @@ I also wanted to use it as an opportunity to build my own services without using
 
 ## Features
 
+### TODO:
+- Middleware system for http server
+- Create body parser middleware
+- Create `sendStatus()` on response object
+- Create array validator
+- Add `optional()` to type validators to allow undefined
+
+
 ### Discord Client
 
 **Problem**: Discord interactions have a 3 second timeout window for the application to acknowledge the interaction. Since the main app is a serverless application, I ended up encountering a major issue when adding interaction handling to the NextjS app: serverless function cold starts would sometimes exceed the 3 second response window. I also wanted to maintain the logic for specific interaction handlers within the code for the main app.
