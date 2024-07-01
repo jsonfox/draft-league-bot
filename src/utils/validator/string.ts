@@ -1,4 +1,5 @@
 import { BaseValidator } from "./base";
+import { EnumValidator } from "./enum";
 
 export class StringValidator extends BaseValidator {
   parse(arg: unknown) {
@@ -56,5 +57,9 @@ export class StringValidator extends BaseValidator {
       }
     });
     return this;
+  }
+
+  enum<T, E extends string[]>(accepted: E) {
+    return new EnumValidator<T, E>(accepted);
   }
 }
