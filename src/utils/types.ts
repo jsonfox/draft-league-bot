@@ -1,3 +1,4 @@
+import { ActivityType, PresenceUpdateStatus } from "discord-api-types/v10";
 import * as http from "http";
 
 export type OverlayTeam = {
@@ -23,3 +24,9 @@ export type HttpResponseType = http.ServerResponse<http.IncomingMessage> & {
 };
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+export type DiscordStatusUpdateData = {
+  status: PresenceUpdateStatus;
+  type: ActivityType;
+  name: string;
+};

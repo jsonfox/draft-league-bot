@@ -15,8 +15,10 @@ import {
   GatewayHelloData,
   GatewayVersion,
   GatewayCloseCodes,
+  GatewayUpdatePresence,
 } from "discord-api-types/v10";
 import { logger } from "./utils/logger";
+import { DiscordStatusUpdateData } from "./utils/types";
 
 const resolveBitfield = (bits: number[]) => {
   /* tslint:disable-next-line no-bitwise */
@@ -61,14 +63,28 @@ export class DiscordClient {
   constructor(cb?: () => void) {
     /** https://discord.com/developers/docs/topics/gateway#connecting */
     const ws = new WebSocket(this.gatewayUrl);
-    this.ws = this.addSocketListeners(ws, cb);
+    this.ws = this.initialize(ws, cb);
   }
 
-  private addSocketListeners(ws: WebSocket, cb?: () => void) {
+  /** Returns new client instance */
+  static start(cb?: () => void) {
+    return new DiscordClient(cb);
+  }
+
+  private sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /** Set up event listeners for WebSocket connection */
+  private initialize(ws: WebSocket, cb?: () => void) {
     // Run initialize function after connection is open
     ws.onopen = () => {
       cb?.();
     };
+
+    ws.onerror = (err) => {
+      logger.error("WebSocket error:", err.message);
+    }
 
     // Handle disconnects based on close code
     ws.onclose = ({ code }) => {
@@ -81,44 +97,22 @@ export class DiscordClient {
         return;
       }
 
-      if (!this.ws.CLOSED) {
-        this.ws.close();
+      if (this.shouldStartNewSession.includes(code)) {
+        this.restart();
+      } else {
+        this.resume();
       }
-
-      let url = this.gatewayUrl;
-      if (
-        this.shouldStartNewSession.includes(code) &&
-        this.sessionId &&
-        this.lastSequenceNumber
-      ) {
-        url = this.resumeGatewayUrl ?? url;
-        // Send resume payload
-        cb = () => {
-          ws.send(
-            JSON.stringify({
-              op: GatewayOpcodes.Resume,
-              d: {
-                token: this.token,
-                session_id: this.sessionId,
-                seq: this.lastSequenceNumber,
-              },
-            })
-          );
-        };
-      }
-
-      // Create new socket connection
-      const newSocket = this.addSocketListeners(new WebSocket(url), cb);
-      // Clear session data
-      this.sessionId = undefined;
-      this.resumeGatewayUrl = undefined;
-      this.lastSequenceNumber = undefined;
-      this.ws = newSocket;
     };
 
     /** https://discord.com/developers/docs/topics/gateway#gateway-events */
-    ws.onmessage = (data: any) => {
-      const payload = JSON.parse(data);
+    ws.onmessage = ({ data }) => {
+      data = data.toString();
+      let payload: GatewayReceivePayload;
+      try {
+        payload = JSON.parse(data);
+      } catch (err) {
+        return;
+      }
       const { t, op, d, s } = payload as GatewayReceivePayload;
 
       // Handle gateway opcodes
@@ -160,9 +154,13 @@ export class DiscordClient {
           const interaction = d as GatewayInteractionCreateDispatchData;
 
           if (interaction?.application_id !== env.APPLICATION_ID) return;
-          logger.info("Received interaction", interaction.id);
+          logger.debug("Received interaction", interaction.id);
 
           this.forwardInteraction(interaction);
+          break;
+        }
+        case GatewayDispatchEvents.Resumed: {
+          logger.info("Resumed session");
           break;
         }
         default:
@@ -170,22 +168,54 @@ export class DiscordClient {
       }
     };
 
+    // Clear session data
+    this.sessionId = undefined;
+    this.resumeGatewayUrl = undefined;
+    this.lastSequenceNumber = undefined;
     return ws;
   }
 
-  /** Returns new client instance */
-  static start(cb?: () => void) {
-    return new DiscordClient(cb);
-  }
-
+  /** Disconnect from Discord gateway */
   close() {
-    if (!this.ws.CLOSED) this.ws.close();
+    if (!this.ws.CLOSED) {
+      logger.info("Closing connection to Discord gateway");
+      this.ws.close(1000);
+    }
   }
 
-  restart() {
+  /** Create new Discord gateway session */
+  restart(cb?: () => void) {
+    logger.init("Restarting Discord gateway session");
     this.close();
     const ws = new WebSocket(this.gatewayUrl);
-    this.ws = this.addSocketListeners(ws);
+    this.ws = this.initialize(ws, cb);
+  }
+
+  /** Resume Discord gateway session with session data */
+  resume(cb?: () => void) {
+    logger.init("Attempting to resume Discord gateway session");
+    if (!(this.resumeGatewayUrl && this.sessionId && this.lastSequenceNumber)) {
+      logger.error(
+        "Cannot resume session without session data. Attempting to start a new session."
+      );
+      this.restart(cb);
+      return;
+    }
+    const ws = new WebSocket(this.resumeGatewayUrl);
+    const initCb = () => {
+      cb?.();
+      ws.send(
+        JSON.stringify({
+          op: GatewayOpcodes.Resume,
+          d: {
+            token: this.token,
+            session_id: this.sessionId,
+            seq: this.lastSequenceNumber,
+          },
+        })
+      );
+    };
+    this.ws = this.initialize(ws, initCb);
   }
 
   /** Reusable fetch init since all fetch requests in this class use the same init */
@@ -234,7 +264,7 @@ export class DiscordClient {
         await sendErrorMessage(
           "Please wait a couple seconds before using another button on this message."
         );
-        logger.info("Rate limited button interaction");
+        logger.debug("Rate limited button interaction");
         return;
       }
 
@@ -264,7 +294,13 @@ export class DiscordClient {
     // Forward interaction to main app
     const res = await this.post(this.forwardUrl + forwardPath, interaction);
 
-    logger.info("Forwarded response status:", res.status, res.statusText);
+    logger.info(
+      "Forwarded interaction",
+      interaction.id,
+      "with response code",
+      res.status,
+      res.statusText
+    );
 
     if (!res.ok) {
       try {
@@ -323,5 +359,25 @@ export class DiscordClient {
         })
       );
     }, heartbeat_interval);
+  }
+
+  /** Update Discord client status */
+  updatePresence({ name, type, status }: DiscordStatusUpdateData) {
+    this.ws.send(
+      JSON.stringify({
+        op: GatewayOpcodes.PresenceUpdate,
+        d: {
+          activities: [
+            {
+              name: name,
+              type: type,
+            },
+          ],
+          since: Date.now(),
+          status: status,
+          afk: false,
+        },
+      } as GatewayUpdatePresence)
+    );
   }
 }
