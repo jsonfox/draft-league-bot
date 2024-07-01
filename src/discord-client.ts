@@ -66,12 +66,12 @@ export class DiscordClient {
 
   private addSocketListeners(ws: WebSocket, cb?: () => void) {
     // Run initialize function after connection is open
-    ws.on("open", () => {
+    ws.onopen = () => {
       cb?.();
-    });
+    };
 
     // Handle disconnects based on close code
-    ws.on("disconnect", (code: number) => {
+    ws.onclose = ({ code }) => {
       logger.error("Disconnected from Discord gateway with code", code);
 
       if (this.shouldNotReconnect.includes(code)) {
@@ -114,10 +114,10 @@ export class DiscordClient {
       this.resumeGatewayUrl = undefined;
       this.lastSequenceNumber = undefined;
       this.ws = newSocket;
-    });
+    };
 
     /** https://discord.com/developers/docs/topics/gateway#gateway-events */
-    ws.on("message", (data: any) => {
+    ws.onmessage = (data: any) => {
       const payload = JSON.parse(data);
       const { t, op, d, s } = payload as GatewayReceivePayload;
 
@@ -133,9 +133,6 @@ export class DiscordClient {
               d: null,
             })
           );
-          break;
-        case GatewayOpcodes.Reconnect:
-          ws.close();
           break;
         case GatewayOpcodes.InvalidSession:
           this.identify();
@@ -171,7 +168,7 @@ export class DiscordClient {
         default:
           break;
       }
-    });
+    };
 
     return ws;
   }
