@@ -84,7 +84,7 @@ export class DiscordClient {
 
     ws.onerror = (err) => {
       logger.error("WebSocket error:", err.message);
-    }
+    };
 
     // Handle disconnects based on close code
     ws.onclose = ({ code }) => {
@@ -239,14 +239,11 @@ export class DiscordClient {
       return this.post(
         `${this.baseUrl}/interactions/${interaction.id}/${interaction.token}/callback`,
         {
-          body: {
-            type: InteractionResponseType.ChannelMessageWithSource,
-            data: {
-              content,
-              flags: MessageFlags.Ephemeral,
-            },
+          type: InteractionResponseType.ChannelMessageWithSource,
+          data: {
+            content,
+            flags: MessageFlags.Ephemeral,
           },
-          auth: false,
         }
       );
     };
@@ -284,10 +281,7 @@ export class DiscordClient {
     await this.post(
       `${this.baseUrl}/interactions/${interaction.id}/${interaction.token}/callback`,
       {
-        body: {
-          type: responseType,
-        },
-        auth: false,
+        type: responseType,
       }
     );
 
