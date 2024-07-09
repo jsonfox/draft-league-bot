@@ -1,6 +1,7 @@
 import { logger } from "./utils/logger";
 import app from "./app";
 import "./utils/env";
+import { sendErrorToDiscord } from "./utils/helpers";
 
 logger.init("Initializing server...");
 
@@ -11,12 +12,13 @@ app.listen(port, () => {
   logger.ready(`Server running on port ${port}`);
 });
 
-process.on("uncaughtException", (error) => {
-  logger.error("Uncaught Exception thrown", error);
-});
-
-process.on("unhandledRejection", (reason, promise) => {
-  logger.error("Unhandled Rejection at:", promise, "reason:", reason);
+process.on("uncaughtException", async (error) => {
+  logger.error(error.stack ?? error.message);
+  if (process.env.NODE_ENV === "production") {
+    await sendErrorToDiscord(error);
+    logger.init("Shutting down server...");
+    process.exit(1);
+  }
 });
 
 process.on("exit", () => {

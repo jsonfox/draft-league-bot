@@ -7,6 +7,7 @@ export const envSchema = v.object({
   APPLICATION_ID: v.string().isNotEmpty(),
   ORIGIN_URL: v.string().url(),
   AUTH_TOKEN: v.string().isNotEmpty(),
+  WEBHOOK_URL: v.string().url(),
 });
 
 export const env = envSchema.parse(process.env);
