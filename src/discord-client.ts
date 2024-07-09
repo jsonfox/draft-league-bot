@@ -59,6 +59,7 @@ export class DiscordClient {
     GatewayCloseCodes.InvalidIntents,
     GatewayCloseCodes.DisallowedIntents,
   ];
+  currentReconnectAttempts = 0;
 
   constructor(cb?: () => void) {
     /** https://discord.com/developers/docs/topics/gateway#connecting */
@@ -71,8 +72,12 @@ export class DiscordClient {
     return new DiscordClient(cb);
   }
 
-  private sleep(ms: number) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  private sleep(ms: number, cb?: () => any) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve(cb?.());
+      }, ms);
+    });
   }
 
   /** Set up event listeners for WebSocket connection */
@@ -97,11 +102,22 @@ export class DiscordClient {
         return;
       }
 
-      if (this.shouldStartNewSession.includes(code)) {
-        this.restart();
-      } else {
-        this.resume();
+      if (this.currentReconnectAttempts >= 5) {
+        logger.error("Exceeded maximum number of failed reconnect attempts");
+        return;
       }
+
+      // Reconnect after delay
+      const reconnectDelay =
+        1000 + 9000 * +(code === GatewayCloseCodes.RateLimited);
+      this.sleep(reconnectDelay, () => {
+        this.currentReconnectAttempts++;
+        if (this.shouldStartNewSession.includes(code)) {
+          this.restart();
+        } else {
+          this.resume();
+        }
+      });
     };
 
     /** https://discord.com/developers/docs/topics/gateway#gateway-events */
@@ -144,6 +160,7 @@ export class DiscordClient {
       switch (t) {
         /** https://discord.com/developers/docs/topics/gateway#ready-event */
         case GatewayDispatchEvents.Ready: {
+          this.currentReconnectAttempts = 0;
           const { user, session_id, resume_gateway_url } = d;
           this.sessionId = session_id;
           this.resumeGatewayUrl = resume_gateway_url;
@@ -219,7 +236,7 @@ export class DiscordClient {
   }
 
   /** Reusable fetch init since all fetch requests in this class use the same init */
-  private post(url: string, data: any) {
+  private post(url: string, data: unknown) {
     return fetch(url, {
       method: "POST",
       headers: {
@@ -329,7 +346,7 @@ export class DiscordClient {
         presence: {
           activities: [
             {
-              name: "Gaming",
+              name: "NEDL",
               type: ActivityType.Competing,
             },
           ],
