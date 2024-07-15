@@ -1,4 +1,4 @@
-import { WebSocket } from "ws";
+import { Data, EventEmitter, once, WebSocket } from "ws";
 import { env } from "./utils/env";
 import {
   GatewayIntentBits,
@@ -16,223 +16,591 @@ import {
   GatewayVersion,
   GatewayCloseCodes,
   GatewayUpdatePresence,
+  GatewaySendPayload,
+  GatewayIdentifyData,
 } from "discord-api-types/v10";
 import { logger } from "./utils/logger";
-import { DiscordStatusUpdateData } from "./utils/types";
-
-const resolveBitfield = (bits: number[]) => {
-  /* tslint:disable-next-line no-bitwise */
-  return bits.reduce((acc, bit) => acc | bit, 0);
-};
+import {
+  DiscordClientStatus,
+  DiscordPresenceUpdateData,
+  DiscordClientEvents,
+  DiscordClientEventsMap,
+} from "./utils/types";
+import { sleep, resolveBitfield } from "./utils/helpers";
+import { AsyncQueue } from "@sapphire/async-queue";
+import { Collection } from "./utils/collection";
 
 const ApiVersion = "v10";
 
-export class DiscordClient {
-  /** Discord bot token */
-  readonly token = env.BOT_TOKEN;
-  /** Discord application id */
-  readonly applicationId = env.APPLICATION_ID;
+enum CloseCodes {
+  Normal = 1_000,
+  Resuming = 4_200,
+}
+
+const ImportantGatewayOpcodes = new Set([
+  GatewayOpcodes.Heartbeat,
+  GatewayOpcodes.Identify,
+  GatewayOpcodes.Resume,
+]);
+
+const KnownNetworkErrorCodes = new Set([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "EAI_AGAIN",
+]);
+
+enum GatewayTimeouts {
+  handshake = 30_000,
+  hello = 60_000,
+  ready = 15_000,
+}
+
+export enum ClientRecovery {
+  Resume,
+  Reconnect,
+}
+
+type ClientCloseOptions = {
+  code?: number;
+  reason?: string;
+  recover?: ClientRecovery;
+};
+
+type SessionInfo = {
+  id: string;
+  sequence: number;
+  resumeUrl: string;
+};
+
+type RateLimitState = {
+  resetAt: number;
+  sent: number;
+};
+
+const getInitialRateLimitState = (): RateLimitState => ({
+  resetAt: Date.now() + 60_000,
+  sent: 0,
+});
+
+const ReconnectCodes = new Set([
+  CloseCodes.Normal,
+  GatewayCloseCodes.NotAuthenticated,
+  GatewayCloseCodes.AlreadyAuthenticated,
+  GatewayCloseCodes.InvalidSeq,
+  GatewayCloseCodes.RateLimited,
+]);
+
+const ResumeCodes = new Set([
+  GatewayCloseCodes.UnknownError,
+  GatewayCloseCodes.UnknownOpcode,
+  GatewayCloseCodes.DecodeError,
+  GatewayCloseCodes.SessionTimedOut,
+]);
+
+export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
   /** https://discord.com/developers/docs/topics/gateway#connecting */
-  readonly gatewayUrl = `wss://gateway.discord.gg/?v=${GatewayVersion}&encoding=json`;
+  private readonly gatewayUrl = `wss://gateway.discord.gg/`;
+
+  private readonly gatewayParams = `v=${GatewayVersion}&encoding=json`;
+
   /** Base url for Discord API */
-  readonly baseUrl = `https://discord.com/api/${ApiVersion}`;
+  private readonly baseUrl = `https://discord.com/api/${ApiVersion}`;
+
   /** Base url for forwarded interactions */
-  readonly forwardUrl = env.ORIGIN_URL + "/api/discord/interactions";
+  private readonly forwardUrl = env.ORIGIN_URL + "/api/discord/interactions";
+
   /** Map of interaction messages to prevent rate limiting */
-  readonly interactionMessages: Map<string, number> = new Map();
+  private readonly interactionMessages: Collection<string, number> =
+    new Collection();
+
   /** WebSocket connection to Discord gateway */
-  ws: WebSocket;
-  // For resuming connections
-  sessionId?: string;
-  resumeGatewayUrl?: string;
-  lastSequenceNumber?: number;
-  /** https://discord.com/developers/docs/topics/opcodes-and-status-codes#gateway-gateway-close-event-codes */
-  shouldStartNewSession = [
-    GatewayCloseCodes.InvalidSeq,
-    GatewayCloseCodes.SessionTimedOut,
-  ];
-  shouldNotReconnect = [
-    GatewayCloseCodes.AuthenticationFailed,
-    GatewayCloseCodes.InvalidShard,
-    GatewayCloseCodes.ShardingRequired,
-    GatewayCloseCodes.InvalidAPIVersion,
-    GatewayCloseCodes.InvalidIntents,
-    GatewayCloseCodes.DisallowedIntents,
-  ];
-  currentReconnectAttempts = 0;
+  private ws: WebSocket | null = null;
 
-  constructor(cb?: () => void) {
-    /** https://discord.com/developers/docs/topics/gateway#connecting */
-    const ws = new WebSocket(this.gatewayUrl);
-    this.ws = this.initialize(ws, cb);
+  /** Session data for resuming connections */
+  private session: SessionInfo | null = null;
+
+  private reconnectAttempts = 0;
+
+  private replayedEvents = 0;
+
+  private initialHeartbeatTimeoutController: AbortController | null = null;
+
+  private isAck = false;
+
+  private lastHeartbeatAt = -1;
+
+  /** Indicates whether the client has resolved its original connect() call */
+  private initialConnectResolved = false;
+
+  /** Indicates if client failed to connect to the ws url */
+  private failedToConnectDueToNetworkError = false;
+
+  private heartbeatInterval: NodeJS.Timeout | null = null;
+
+  private rateLimitState = getInitialRateLimitState();
+
+  private readonly sendQueue = new AsyncQueue();
+
+  private readonly timeoutAbortControllers = new Collection<
+    DiscordClientEvents,
+    AbortController
+  >();
+
+  #status: DiscordClientStatus = DiscordClientStatus.Idle;
+
+  get status() {
+    return this.#status;
   }
 
-  /** Returns new client instance */
-  static start(cb?: () => void) {
-    return new DiscordClient(cb);
+  constructor() {
+    super();
   }
 
-  private sleep(ms: number, cb?: () => any) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(cb?.());
-      }, ms);
-    });
-  }
+  private async waitForEvent(
+    event: DiscordClientEvents,
+    timeoutDuration?: number | null
+  ): Promise<{ ok: boolean }> {
+    logger.debug(
+      `Waiting for event ${event} ${
+        timeoutDuration ? `for ${timeoutDuration}ms` : "indefinitely"
+      }`
+    );
+    const timeoutController = new AbortController();
+    const timeout = timeoutDuration
+      ? setTimeout(() => timeoutController.abort(), timeoutDuration).unref()
+      : null;
 
-  /** Set up event listeners for WebSocket connection */
-  private initialize(ws: WebSocket, cb?: () => void) {
-    // Run initialize function after connection is open
-    ws.onopen = () => {
-      cb?.();
-    };
+    this.timeoutAbortControllers.set(event, timeoutController);
 
-    ws.onerror = (err) => {
-      logger.error("WebSocket error:", err.message);
-    };
+    const closeController = new AbortController();
 
-    // Handle disconnects based on close code
-    ws.onclose = ({ code }) => {
-      logger.error("Disconnected from Discord gateway with code", code);
+    try {
+      const closed = await Promise.race<boolean>([
+        once(this, event, { signal: timeoutController.signal }).then(
+          () => false
+        ),
+        once(this, DiscordClientEvents.Closed, {
+          signal: closeController.signal,
+        }).then(() => true),
+      ]);
 
-      if (this.shouldNotReconnect.includes(code)) {
-        logger.error(
-          "The close code indicates that the socket should not attempt to reconnect"
-        );
-        return;
-      }
+      return { ok: !closed };
+    } catch {
+      logger.debug(
+        "Something timed out or went wrong while waiting for an event"
+      );
 
-      if (this.currentReconnectAttempts >= 5) {
-        logger.error("Exceeded maximum number of failed reconnect attempts");
-        return;
-      }
-
-      // Reconnect after delay
-      const reconnectDelay =
-        1000 + 9000 * +(code === GatewayCloseCodes.RateLimited);
-      this.sleep(reconnectDelay, () => {
-        this.currentReconnectAttempts++;
-        if (this.shouldStartNewSession.includes(code)) {
-          this.restart();
-        } else {
-          this.resume();
-        }
+      void this.close({
+        code: CloseCodes.Normal,
+        reason: "Something timed out or went wrong while waiting for an event",
+        recover: ClientRecovery.Reconnect,
       });
-    };
 
-    /** https://discord.com/developers/docs/topics/gateway#gateway-events */
-    ws.onmessage = ({ data }) => {
-      data = data.toString();
-      let payload: GatewayReceivePayload;
-      try {
-        payload = JSON.parse(data);
-      } catch (err) {
-        return;
-      }
-      const { t, op, d, s } = payload as GatewayReceivePayload;
-
-      // Handle gateway opcodes
-      switch (op) {
-        case GatewayOpcodes.Dispatch:
-          this.lastSequenceNumber = s;
-          break;
-        case GatewayOpcodes.Heartbeat:
-          this.ws.send(
-            JSON.stringify({
-              op: GatewayOpcodes.Heartbeat,
-              d: null,
-            })
-          );
-          break;
-        case GatewayOpcodes.InvalidSession:
-          this.identify();
-          break;
-        /** https://discord.com/developers/docs/topics/gateway#hello-event */
-        case GatewayOpcodes.Hello:
-          this.identify();
-          this.heartbeat(d as GatewayHelloData);
-          break;
-        default:
-          break;
+      return { ok: false };
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
       }
 
-      // Handle gateway dispatch events
-      switch (t) {
-        /** https://discord.com/developers/docs/topics/gateway#ready-event */
-        case GatewayDispatchEvents.Ready: {
-          this.currentReconnectAttempts = 0;
-          const { user, session_id, resume_gateway_url } = d;
-          this.sessionId = session_id;
-          this.resumeGatewayUrl = resume_gateway_url;
-          logger.ready("Logged in as", user.username);
-          break;
-        }
-        case GatewayDispatchEvents.InteractionCreate: {
-          const interaction = d as GatewayInteractionCreateDispatchData;
+      this.timeoutAbortControllers.delete(event);
 
-          if (interaction?.application_id !== env.APPLICATION_ID) return;
-          logger.debug("Received interaction", interaction.id);
-
-          this.forwardInteraction(interaction);
-          break;
-        }
-        case GatewayDispatchEvents.Resumed: {
-          logger.info("Resumed session");
-          break;
-        }
-        default:
-          break;
+      if (!closeController.signal.aborted) {
+        closeController.abort();
       }
-    };
-
-    // Clear session data
-    this.sessionId = undefined;
-    this.resumeGatewayUrl = undefined;
-    this.lastSequenceNumber = undefined;
-    return ws;
-  }
-
-  /** Disconnect from Discord gateway */
-  close() {
-    if (!this.ws.CLOSED) {
-      logger.info("Closing connection to Discord gateway");
-      this.ws.close(1000);
     }
   }
 
-  /** Create new Discord gateway session */
-  restart(cb?: () => void) {
-    logger.init("Restarting Discord gateway session");
-    this.close();
-    const ws = new WebSocket(this.gatewayUrl);
-    this.ws = this.initialize(ws, cb);
-  }
+  // Start event handlers
+  private async onMessage(data: Data) {
+    if (typeof data !== "string") return;
 
-  /** Resume Discord gateway session with session data */
-  resume(cb?: () => void) {
-    logger.init("Attempting to resume Discord gateway session");
-    if (!(this.resumeGatewayUrl && this.sessionId && this.lastSequenceNumber)) {
-      logger.error(
-        "Cannot resume session without session data. Attempting to start a new session."
-      );
-      this.restart(cb);
+    let payload: GatewayReceivePayload;
+    try {
+      payload = JSON.parse(data);
+    } catch (err) {
       return;
     }
-    const ws = new WebSocket(this.resumeGatewayUrl);
-    const initCb = () => {
-      cb?.();
-      ws.send(
-        JSON.stringify({
-          op: GatewayOpcodes.Resume,
-          d: {
-            token: this.token,
-            session_id: this.sessionId,
-            seq: this.lastSequenceNumber,
-          },
-        })
+
+    switch (payload.op) {
+      case GatewayOpcodes.Dispatch: {
+        if (this.#status === DiscordClientStatus.Resuming) {
+          this.replayedEvents++;
+        }
+
+        switch (payload.t) {
+          case GatewayDispatchEvents.Ready: {
+            this.#status = DiscordClientStatus.Ready;
+            this.reconnectAttempts = 0;
+            this.session = {
+              id: payload.d.session_id,
+              sequence: payload.s,
+              resumeUrl: payload.d.resume_gateway_url,
+            };
+            logger.ready("Logged in as", payload.d.user.username);
+            this.emit(DiscordClientEvents.Ready, { data: payload.d });
+            break;
+          }
+
+          case GatewayDispatchEvents.Resumed: {
+            this.#status = DiscordClientStatus.Ready;
+            logger.ready(`Resumed and replayed ${this.replayedEvents} events`);
+            this.emit(DiscordClientEvents.Resumed);
+            this.replayedEvents = 0;
+            break;
+          }
+
+          case GatewayDispatchEvents.InteractionCreate: {
+            const interaction =
+              payload.d as GatewayInteractionCreateDispatchData;
+
+            if (interaction.application_id !== env.APPLICATION_ID) return;
+            logger.debug("Received interaction", interaction.id);
+
+            this.forwardInteraction(interaction);
+          }
+
+          default: {
+            break;
+          }
+        }
+
+        if (this.session) {
+          if (payload.s > this.session.sequence) {
+            this.session.sequence = payload.s;
+          }
+        } else {
+          logger.warn(
+            `Received a ${payload.t} event but no session is available. Full reconnect required to restore session state.`
+          );
+        }
+        break;
+      }
+
+      case GatewayOpcodes.Heartbeat: {
+        await this.heartbeat(true);
+        break;
+      }
+
+      case GatewayOpcodes.Reconnect: {
+        await this.close({
+          reason: "Told to reconnect by Discord",
+          recover: ClientRecovery.Resume,
+        });
+        break;
+      }
+
+      case GatewayOpcodes.InvalidSession: {
+        if (payload.d && this.session) {
+          logger.warn(
+            `Invalid session; will attempt to resume: ${payload.d.toString()}`
+          );
+          await this.resume(this.session);
+        } else {
+          logger.warn("Invalid session; will attempt to reconnect");
+          await this.close({
+            reason: "Invalid session",
+            recover: ClientRecovery.Reconnect,
+          });
+        }
+
+        break;
+      }
+
+      case GatewayOpcodes.Hello: {
+        this.emit(DiscordClientEvents.Hello);
+        const jitter = Math.random();
+        const firstWait = Math.floor(payload.d.heartbeat_interval * jitter);
+        logger.debug(
+          `Preparing first heartbeat of the connection with a jitter of ${jitter}; waiting ${firstWait}ms`
+        );
+
+        try {
+          const controller = new AbortController();
+          this.initialHeartbeatTimeoutController = controller;
+          await sleep(firstWait, undefined, { signal: controller.signal });
+        } catch {
+          logger.debug(
+            "Cancelled initial heartbeat due to #close being called"
+          );
+          return;
+        } finally {
+          this.initialHeartbeatTimeoutController = null;
+        }
+
+        await this.heartbeat();
+
+        logger.debug(
+          `First heartbeat sent, starting to beat every ${payload.d.heartbeat_interval}ms`
+        );
+
+        this.heartbeatInterval = setInterval(
+          () => void this.heartbeat(),
+          payload.d.heartbeat_interval
+        );
+        break;
+      }
+
+      case GatewayOpcodes.HeartbeatAck: {
+        this.isAck = true;
+
+        const ackAt = Date.now();
+        this.emit(DiscordClientEvents.HeartbeatComplete, {
+          ackAt,
+          heartbeatAt: this.lastHeartbeatAt,
+          latency: ackAt - this.lastHeartbeatAt,
+        });
+
+        break;
+      }
+    }
+  }
+
+  private onError(error: Error) {
+    if ("code" in error && KnownNetworkErrorCodes.has(error.code as string)) {
+      logger.error("Failed to connect to the gateway due to a network error");
+      this.failedToConnectDueToNetworkError = true;
+    } else {
+      logger.error(
+        "An error occurred in the WebSocket connection",
+        error.stack ?? error.message
       );
+    }
+    this.emit(DiscordClientEvents.Error, { error });
+  }
+
+  private onClose(code: number) {
+    this.emit(DiscordClientEvents.Closed, { code });
+
+    const closeOptions: ClientCloseOptions = {
+      code,
+      recover: ResumeCodes.has(code)
+        ? ClientRecovery.Resume
+        : ReconnectCodes.has(code)
+        ? ClientRecovery.Reconnect
+        : undefined,
     };
-    this.ws = this.initialize(ws, initCb);
+
+    switch (code) {
+      case CloseCodes.Resuming:
+        return;
+      case CloseCodes.Normal:
+        closeOptions.reason = "Disconnected by Discord";
+        break;
+      case GatewayCloseCodes.UnknownError:
+      case GatewayCloseCodes.UnknownOpcode:
+      case GatewayCloseCodes.DecodeError:
+      case GatewayCloseCodes.NotAuthenticated:
+      case GatewayCloseCodes.AuthenticationFailed:
+      case GatewayCloseCodes.AlreadyAuthenticated:
+      case GatewayCloseCodes.InvalidSeq:
+      case GatewayCloseCodes.RateLimited:
+      case GatewayCloseCodes.SessionTimedOut:
+      case GatewayCloseCodes.InvalidShard:
+      case GatewayCloseCodes.ShardingRequired:
+      case GatewayCloseCodes.InvalidAPIVersion:
+      case GatewayCloseCodes.InvalidIntents:
+      case GatewayCloseCodes.DisallowedIntents:
+        logger.error(
+          `The gateway closed with a known error code ${code}\nSee https://discord.com/developers/docs/topics/opcodes-and-status-codes#gateway-gateway-close-event-codes for more information`
+        );
+        return this.close(closeOptions);
+      default:
+        logger.error(
+          `The gateway closed with an unexpected code ${code}, attempting to ${
+            this.failedToConnectDueToNetworkError ? "reconnect" : "resume"
+          }.`
+        );
+        return this.close({
+          code,
+          recover: this.failedToConnectDueToNetworkError
+            ? ClientRecovery.Reconnect
+            : ClientRecovery.Resume,
+        });
+    }
+  }
+  // End event handlers
+
+  /** Internal ws client intialization */
+  private async connect(resume = false) {
+    if (this.#status !== DiscordClientStatus.Idle) {
+      throw new Error("Client must be idle to connect");
+    }
+
+    if (this.initialConnectResolved) {
+      this.reconnectAttempts++;
+    }
+
+    if (this.reconnectAttempts > 5) {
+      logger.error("Exceeded maximum number of failed reconnect attempts");
+      return;
+    }
+
+    const url = `${this.session?.resumeUrl ?? this.gatewayUrl}?${
+      this.gatewayParams
+    }`;
+
+    logger.init(`Connecting to ${url}`);
+
+    const ws = new WebSocket(url, {
+      handshakeTimeout: GatewayTimeouts.handshake,
+    });
+
+    ws.onmessage = ({ data }) => {
+      void this.onMessage(data);
+    };
+
+    ws.onerror = ({ error }) => {
+      this.onError(error);
+    };
+
+    ws.onclose = ({ code }) => {
+      void this.onClose(code);
+    };
+
+    ws.onopen = () => {
+      this.rateLimitState = getInitialRateLimitState();
+    };
+
+    this.ws = ws;
+
+    this.#status = DiscordClientStatus.Connecting;
+
+    const { ok } = await this.waitForEvent(
+      DiscordClientEvents.Hello,
+      GatewayTimeouts.hello
+    );
+    if (!ok) {
+      return;
+    }
+
+    if (resume && this.session) {
+      await this.resume(this.session);
+    } else {
+      await this.identify();
+    }
+  }
+
+  async open() {
+    const controller = new AbortController();
+    let promise;
+
+    if (!this.initialConnectResolved) {
+      promise = Promise.race([
+        once(this, DiscordClientEvents.Ready, {
+          signal: controller.signal,
+        }),
+        once(this, DiscordClientEvents.Resumed, {
+          signal: controller.signal,
+        }),
+      ]);
+    }
+
+    void this.connect();
+
+    try {
+      await promise;
+    } catch ({ error }: any) {
+      throw error;
+    } finally {
+      controller.abort();
+    }
+
+    this.initialConnectResolved = true;
+  }
+
+  async close(options: ClientCloseOptions = {}) {
+    if (this.#status === DiscordClientStatus.Idle) {
+      logger.warn("Cannot close an idle client");
+      return;
+    }
+
+    if (!options.code) {
+      options.code =
+        options.recover === ClientRecovery.Resume
+          ? CloseCodes.Resuming
+          : CloseCodes.Normal;
+    }
+
+    logger.warn(
+      `Closing the client with code ${options.code} for reason: ${
+        options.reason ?? "none"
+      }`
+    );
+
+    // Reset state
+    this.isAck = true;
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+    }
+
+    if (this.initialHeartbeatTimeoutController) {
+      this.initialHeartbeatTimeoutController.abort();
+      this.initialHeartbeatTimeoutController = null;
+    }
+
+    this.lastHeartbeatAt = -1;
+
+    for (const controller of this.timeoutAbortControllers.values()) {
+      controller.abort();
+    }
+
+    this.timeoutAbortControllers.clear();
+
+    this.failedToConnectDueToNetworkError = false;
+
+    // Clear session state if applicable
+    if (options.recover !== ClientRecovery.Resume) {
+      this.session = null;
+    }
+
+    if (this.ws) {
+      // Remove event listeners
+      this.ws.onmessage = null;
+      this.ws.onclose = null;
+
+      // Close the connection if it's open
+      if (this.ws.readyState === WebSocket.OPEN) {
+        let outerResolve: () => void;
+        const promise = new Promise<void>((resolve) => {
+          outerResolve = resolve;
+        });
+
+        this.ws.onclose = outerResolve!;
+
+        this.ws.close(options.code, options.reason);
+
+        await promise;
+        this.emit(DiscordClientEvents.Closed, { code: options.code });
+      }
+
+      this.ws.onerror = null;
+    } else {
+      logger.warn("No WebSocket connection to close");
+    }
+
+    this.#status = DiscordClientStatus.Idle;
+
+    if (options.recover !== undefined) {
+      await sleep(500);
+      return this.connect();
+    }
+  }
+
+  private async resume(session: SessionInfo) {
+    logger.init("Resuming session", session.id);
+
+    this.#status = DiscordClientStatus.Resuming;
+    this.replayedEvents = 0;
+    return this.send({
+      op: GatewayOpcodes.Resume,
+      // eslint-disable-next-line id-length
+      d: {
+        token: env.BOT_TOKEN,
+        seq: session.sequence,
+        session_id: session.id,
+      },
+    });
   }
 
   /** Reusable fetch init since all fetch requests in this class use the same init */
@@ -269,29 +637,34 @@ export class DiscordClient {
     let responseType;
 
     // Check interaction type, only forward command and component interactions
-    if (interaction.type === InteractionType.ApplicationCommand) {
-      forwardPath = "/command";
-      responseType = InteractionResponseType.DeferredChannelMessageWithSource;
-    } else if (interaction.type === InteractionType.MessageComponent) {
-      // Check for rate limit (3 seconds)
-      if (this.interactionMessages.has(interaction.message.id)) {
-        await sendErrorMessage(
-          "Please wait a couple seconds before using another button on this message."
-        );
-        logger.debug("Rate limited button interaction");
-        return;
+    switch (interaction.type) {
+      case InteractionType.ApplicationCommand: {
+        forwardPath = "/command";
+        responseType = InteractionResponseType.DeferredChannelMessageWithSource;
+        break;
       }
 
-      // Add 3 second timeout to clear data from map
-      this.interactionMessages.set(interaction.message.id, Date.now());
-      setTimeout(() => {
-        this.interactionMessages.delete(interaction.message.id);
-      }, 3000);
+      case InteractionType.MessageComponent: {
+        // Check for component rate limit (3 seconds)
+        if (this.interactionMessages.has(interaction.message.id)) {
+          await sendErrorMessage(
+            "Please wait a couple seconds before using another button on this message."
+          );
+          logger.debug("Rate limited button interaction");
+          return;
+        }
 
-      forwardPath = "/component";
-      responseType = InteractionResponseType.DeferredMessageUpdate;
-    } else {
-      return;
+        // Add 3 second timeout to clear data from map
+        this.interactionMessages.set(interaction.message.id, Date.now(), 3000);
+
+        forwardPath = "/component";
+        responseType = InteractionResponseType.DeferredMessageUpdate;
+        break;
+      }
+
+      default: {
+        return;
+      }
     }
 
     // Send deferred response
@@ -325,70 +698,173 @@ export class DiscordClient {
     }
   }
 
+  /** Send message to Discord gateway */
+  private async send(payload: GatewaySendPayload): Promise<void> {
+    if (!this.ws) {
+      logger.error("Cannot send payload; no WebSocket connection");
+      return;
+    }
+
+    // If the payload is an important one, send it immediately
+    if (ImportantGatewayOpcodes.has(payload.op)) {
+      this.ws.send(JSON.stringify(payload));
+      return;
+    }
+
+    // If the client is not ready, wait for it to be ready
+    if (
+      this.#status !== DiscordClientStatus.Ready &&
+      !ImportantGatewayOpcodes.has(payload.op)
+    ) {
+      logger.warn(
+        "Tried to send a non-critical payload before the shard was ready, waiting"
+      );
+
+      try {
+        await once(this, DiscordClientEvents.Ready);
+      } catch {
+        return this.send(payload);
+      }
+    }
+
+    await this.sendQueue.wait();
+
+    const now = Date.now();
+    if (now >= this.rateLimitState.resetAt) {
+      this.rateLimitState = getInitialRateLimitState();
+    }
+
+    if (this.rateLimitState.sent + 1 >= 115) {
+      const sleepFor =
+        this.rateLimitState.resetAt - now + Math.random() * 1_500;
+
+      logger.warn(
+        `Was about to hit the send rate limit, sleeping for ${sleepFor}ms`
+      );
+      const controller = new AbortController();
+
+      // Cancel the wait if the connection is closed
+      const interrupted = await Promise.race([
+        sleep(sleepFor).then(() => false),
+        once(this, DiscordClientEvents.Closed, {
+          signal: controller.signal,
+        }).then(() => true),
+      ]);
+
+      if (interrupted) {
+        logger.warn(
+          "Connection closed while waiting for the send rate limit to reset, re-queueing payload"
+        );
+        this.sendQueue.shift();
+        return this.send(payload);
+      }
+
+      // This is so the listener from the `once` call is removed
+      controller.abort();
+    }
+
+    this.rateLimitState.sent++;
+
+    this.sendQueue.shift();
+    this.ws.send(JSON.stringify(payload));
+  }
+
   /** https://discord.com/developers/docs/topics/gateway#identifying */
-  private identify(payload?: GatewayIdentify) {
+  private async identify(payload?: GatewayIdentifyData) {
     // Payload for initial handshake
-    const loginPayload: GatewayIdentify = payload ?? {
-      op: GatewayOpcodes.Identify,
-      d: {
-        token: this.token,
-        intents: resolveBitfield([
-          GatewayIntentBits.Guilds,
-          GatewayIntentBits.GuildMessages,
-          GatewayIntentBits.MessageContent,
-          GatewayIntentBits.GuildMembers,
-        ]),
-        properties: {
-          os: "linux",
-          browser: "disco",
-          device: "disco",
-        },
-        presence: {
-          activities: [
-            {
-              name: "NEDL",
-              type: ActivityType.Competing,
-            },
-          ],
-          status: PresenceUpdateStatus.Online,
-          since: Date.now(),
-          afk: false,
-        },
+    const data: GatewayIdentifyData = payload ?? {
+      token: env.BOT_TOKEN,
+      intents: resolveBitfield([
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers,
+      ]),
+      properties: {
+        os: "linux",
+        browser: "disco",
+        device: "disco",
+      },
+      presence: {
+        activities: [
+          {
+            name: "NEDL",
+            type: ActivityType.Competing,
+          },
+        ],
+        status: PresenceUpdateStatus.Online,
+        since: Date.now(),
+        afk: false,
       },
     };
 
-    this.ws.send(JSON.stringify(loginPayload));
+    logger.init("Waiting for identify");
+
+    const controller = new AbortController();
+    const closeHandler = () => {
+      controller.abort();
+    };
+
+    this.on(DiscordClientEvents.Closed, closeHandler);
+
+    try {
+      await sleep(5_000, undefined, { signal: controller.signal });
+    } catch {
+      if (controller.signal.aborted) {
+        logger.warn(
+          "Was waiting for an identify, but the client closed in the meantime"
+        );
+        return;
+      }
+
+      await this.close({
+        recover: ClientRecovery.Resume,
+      });
+    } finally {
+      this.off(DiscordClientEvents.Closed, closeHandler);
+    }
+
+    await this.send({
+      op: GatewayOpcodes.Identify,
+      d: data,
+    });
+
+    await this.waitForEvent(DiscordClientEvents.Ready, GatewayTimeouts.ready);
   }
 
   /** https://discord.com/developers/docs/topics/gateway#sending-heartbeats */
-  private heartbeat({ heartbeat_interval }: GatewayHelloData) {
-    setInterval(() => {
-      this.ws.send(
-        JSON.stringify({
-          op: GatewayOpcodes.Heartbeat,
-          d: null,
-        })
-      );
-    }, heartbeat_interval);
+  private async heartbeat(requested = false) {
+    if (!this.isAck && !requested) {
+      return this.close({
+        reason: "Zombie connection",
+        recover: ClientRecovery.Resume,
+      });
+    }
+
+    await this.send({
+      op: GatewayOpcodes.Heartbeat,
+      d: this.session?.sequence ?? null,
+    });
+
+    this.lastHeartbeatAt = Date.now();
+    this.isAck = false;
   }
 
-  /** Update Discord client status */
-  updatePresence({ name, type, status }: DiscordStatusUpdateData) {
-    this.ws.send(
-      JSON.stringify({
-        op: GatewayOpcodes.PresenceUpdate,
-        d: {
-          activities: [
-            {
-              name: name,
-              type: type,
-            },
-          ],
-          since: Date.now(),
-          status: status,
-          afk: false,
-        },
-      } as GatewayUpdatePresence)
-    );
+  /** Update Discord client presence */
+  updatePresence({ name, type, status }: DiscordPresenceUpdateData) {
+    this.send({
+      op: GatewayOpcodes.PresenceUpdate,
+      d: {
+        activities: [
+          {
+            name: name,
+            type: type,
+          },
+        ],
+        since: Date.now(),
+        status: status,
+        afk: false,
+      },
+    } as GatewayUpdatePresence);
   }
 }

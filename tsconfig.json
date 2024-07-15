@@ -1,9 +1,12 @@
 {
   "compilerOptions": {
-    "target": "ES5",
-    "esModuleInterop": true,
+    "target": "es2017",
+    "module": "commonjs",
     "strict": true,
+    "esModuleInterop": true,
     "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "downlevelIteration": true,
     "moduleResolution": "node",
     "outDir": "dist",
     "typeRoots": ["./global.d.ts", "./node_modules/@types"]

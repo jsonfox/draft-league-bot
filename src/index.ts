@@ -1,5 +1,5 @@
 import { logger } from "./utils/logger";
-import app from "./app";
+import { app, client } from "./app";
 import "./utils/env";
 import { sendErrorToDiscord } from "./utils/helpers";
 
@@ -8,7 +8,10 @@ logger.init("Initializing server...");
 const port = process.env.PORT || 4000;
 
 // Start server
-app.listen(port, () => {
+app.listen(port, async () => {
+  if (client) {
+    await client.open();
+  }
   logger.ready(`Server running on port ${port}`);
 });
 

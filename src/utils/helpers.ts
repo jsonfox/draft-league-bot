@@ -2,6 +2,8 @@ import { RESTPostAPIChannelMessageJSONBody } from "discord-api-types/v10";
 import { env } from "./env";
 import { logger } from "./logger";
 
+export { setTimeout as sleep } from "node:timers/promises";
+
 // Log uncaught exceptions in Discord
 export const sendErrorToDiscord = async (error: Error) => {
   try {
@@ -27,4 +29,9 @@ export const sendErrorToDiscord = async (error: Error) => {
   } catch (err) {
     logger.error("Failed post to Discord webhook:", (err as Error).message);
   }
+};
+
+export const resolveBitfield = (bits: number[]) => {
+  /* tslint:disable-next-line no-bitwise */
+  return bits.reduce((acc, bit) => acc | bit, 0);
 };

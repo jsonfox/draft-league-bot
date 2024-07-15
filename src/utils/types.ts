@@ -1,4 +1,8 @@
-import { ActivityType, PresenceUpdateStatus } from "discord-api-types/v10";
+import {
+  ActivityType,
+  GatewayReadyDispatchData,
+  PresenceUpdateStatus,
+} from "discord-api-types/v10";
 import * as http from "http";
 
 export type OverlayTeam = {
@@ -25,8 +29,35 @@ export type HttpResponseType = http.ServerResponse<http.IncomingMessage> & {
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-export type DiscordStatusUpdateData = {
+export type DiscordPresenceUpdateData = {
   status: PresenceUpdateStatus;
   type: ActivityType;
   name: string;
 };
+
+export enum DiscordClientStatus {
+  Idle = "idle",
+  Connecting = "connecting",
+  Resuming = "resuming",
+  Ready = "ready",
+}
+
+export enum DiscordClientEvents {
+  Error = "error",
+  HeartbeatComplete = "heartbeat",
+  Hello = "hello",
+  Ready = "ready",
+  Resumed = "resumed",
+  Closed = "closed",
+}
+
+export type DiscordClientEventsMap = {
+  [DiscordClientEvents.Error]: [payload: { error: Error }];
+  [DiscordClientEvents.Ready]: [payload: { data: GatewayReadyDispatchData }];
+  [DiscordClientEvents.Resumed]: [];
+  [DiscordClientEvents.Hello]: [];
+  [DiscordClientEvents.Closed]: [{ code: number }];
+  [DiscordClientEvents.HeartbeatComplete]: [
+    payload: { ackAt: number; heartbeatAt: number; latency: number }
+  ];
+}
