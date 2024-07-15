@@ -2,44 +2,42 @@
 
 type FormatString = `\x1b[${string}m`;
 
-const getTextFormatter = (format: number): FormatString => `\x1b[${format}m`;
-
-const formatting = {
-  reset: getTextFormatter(0),
-  black: getTextFormatter(30),
-  red: getTextFormatter(31),
-  green: getTextFormatter(32),
-  yellow: getTextFormatter(33),
-  blue: getTextFormatter(34),
-  magenta: getTextFormatter(35),
-  cyan: getTextFormatter(36),
-  white: getTextFormatter(37),
-} as const;
+enum TextFormat {
+  Reset = "\x1b[0m",
+  Gray = "\x1b[38;5;249m",
+  Timestamp = "\x1b[38;5;24m",
+  Error = "\x1b[38;5;1m",
+  Success = "\x1b[38;5;42m",
+  Warn = "\x1b[38;5;228m",
+  Info = "\x1b[38;5;117m",
+  Debug = "\x1b[38;5;187m",
+  Init = "\x1b[38;5;75m",
+}
 
 const levels = {
   debug: {
     severity: 0,
-    format: formatting.blue,
+    format: TextFormat.Debug,
   },
   info: {
     severity: 1,
-    format: formatting.green,
+    format: TextFormat.Info,
   },
   init: {
     severity: 1,
-    format: formatting.blue,
+    format: TextFormat.Init,
   },
   ready: {
     severity: 1,
-    format: formatting.green,
+    format: TextFormat.Success,
   },
   warn: {
     severity: 2,
-    format: formatting.yellow,
+    format: TextFormat.Warn,
   },
   error: {
     severity: 3,
-    format: formatting.red,
+    format: TextFormat.Error,
   },
 } as const;
 
@@ -68,16 +66,28 @@ class Logger {
   }
 
   protected format(formatStr: FormatString, content: string) {
-    return `${formatStr}${content}${formatting.reset}`;
+    return `${formatStr}${content}${TextFormat.Reset}`;
   }
 
   protected getPrefix(level: LogLevel) {
+    const symbol = this.format.bind(this, TextFormat.Gray);
+
     const MAX_LEVEL_LENGTH = 5;
     const padding = " ".repeat(MAX_LEVEL_LENGTH - level.length);
-    return `[${this.format(formatting.cyan, this.timestamp)}] [${this.format(
-      levels[level].format,
-      level.toUpperCase()
-    )}]${padding}:`;
+
+    const timestampStr =
+      symbol("[") +
+      this.format(TextFormat.Timestamp, this.timestamp) +
+      symbol("]");
+
+    const levelStr =
+      symbol("[") +
+      this.format(levels[level].format, level.toUpperCase()) +
+      symbol("]") +
+      " ".repeat(MAX_LEVEL_LENGTH - level.length) + // Padding
+      symbol(":");
+
+    return `${timestampStr} ${levelStr}`;
   }
 
   protected log(level: keyof typeof levels, ...args: any[]) {
