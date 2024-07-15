@@ -1,6 +1,6 @@
 # NEDL Server
 
-**NEW**: Added tslint and jest for code maintenance
+**NEW**: Rebuilt Discord client logic to better manage connection to Discord gateway, now largely based on implementation from Discord.js
 
 This server is a containerized application built as a microservice for the main Draft League app. 
 
