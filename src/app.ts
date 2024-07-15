@@ -54,11 +54,13 @@ const validateClientAction = (req: HttpRequestType, res: HttpResponseType) => {
     res.writeHead(400);
     res.end("Client not initialized");
     return false;
-  } else if (!req.headers["x-token"]?.includes(env.BOT_TOKEN)) {
+  } 
+  if (!req.headers["x-token"]?.includes(env.BOT_TOKEN)) {
     res.writeHead(403);
     res.end("Forbidden");
     return false;
   }
+  return true;
 };
 
 // Get Discord client status
