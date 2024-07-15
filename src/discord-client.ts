@@ -8,11 +8,9 @@ import {
   PresenceUpdateStatus,
   ActivityType,
   GatewayOpcodes,
-  GatewayIdentify,
   GatewayReceivePayload,
   InteractionType,
   GatewayInteractionCreateDispatchData,
-  GatewayHelloData,
   GatewayVersion,
   GatewayCloseCodes,
   GatewayUpdatePresence,
@@ -328,7 +326,7 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
           this.initialHeartbeatTimeoutController = null;
         }
 
-        await this.heartbeat();
+        await this.heartbeat(true);
 
         logger.debug(
           `First heartbeat sent, starting to beat every ${payload.d.heartbeat_interval}ms`
@@ -386,7 +384,7 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
         return;
       case CloseCodes.Normal:
         closeOptions.reason = "Disconnected by Discord";
-        break;
+        return this.close(closeOptions);
       case GatewayCloseCodes.UnknownError:
       case GatewayCloseCodes.UnknownOpcode:
       case GatewayCloseCodes.DecodeError:
@@ -436,11 +434,11 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
       return;
     }
 
+    logger.init("Connecting to Discord gateway");
+
     const url = `${this.session?.resumeUrl ?? this.gatewayUrl}?${
       this.gatewayParams
     }`;
-
-    logger.init(`Connecting to ${url}`);
 
     const ws = new WebSocket(url, {
       handshakeTimeout: GatewayTimeouts.handshake,
@@ -798,7 +796,7 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
       },
     };
 
-    logger.init("Waiting for identify");
+    logger.debug("Waiting for identify");
 
     const controller = new AbortController();
     const closeHandler = () => {
