@@ -676,7 +676,7 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
     // Forward interaction to main app
     const res = await this.post(this.forwardUrl + forwardPath, interaction);
 
-    logger.info(
+    logger.debug(
       "Forwarded interaction",
       interaction.id,
       "with response code",
@@ -690,7 +690,7 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
       } catch (err) {
         const error = err as Error;
         if (!error.message.includes("acknowledged")) {
-          logger.error(error.message);
+          logger.error(error.stack ?? error.message);
         }
       }
     }
