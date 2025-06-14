@@ -49,23 +49,23 @@ http.IncomingMessage.prototype.json = async function () {
 
 // res
 http.ServerResponse.prototype.status = function (code: number) {
-  this.writeHead(code);
+  this.statusCode = code;
   return this;
 };
 
 http.ServerResponse.prototype.json = function (data: object) {
   try {
-    const body = JSON.stringify(data);
-    // Set content type to application/json if body is not empty
+    const body = JSON.stringify(data);    // Set content type to application/json if body is not empty
     if (!!body) {
-      this.writeHead(200, { "Content-Type": "application/json" });
+      const statusToUse = this.statusCode !== 200 ? this.statusCode : 200;
+      this.writeHead(statusToUse, { "Content-Type": "application/json" });
     }
     // Send response
-    this.send(body);
+    this.end(body);
   } catch (err) {
     logger.error("Error sending JSON response:", err);
     this.writeHead(500);
-    this.send("Internal server error");
+    this.end("Internal server error");
   }
 };
 
@@ -77,20 +77,18 @@ http.ServerResponse.prototype.send = function (
     logger.debug("Response has already been sent");
     return;
   }
-
   // Send 204 status if message is undefined
   if (message === undefined) {
-    if (!this.statusCode) {
-      this.writeHead(204);
-    }
+    // If status was explicitly set, use it; otherwise default to 204
+    const statusToUse = this.statusCode !== 200 ? this.statusCode : 204;
+    this.writeHead(statusToUse);
     this.end();
     return;
   }
 
-  // Set status code to 200 if not set
-  if (!this.statusCode) {
-    this.writeHead(code);
-  }
+  // Use existing status code or default
+  const statusToUse = this.statusCode !== 200 ? this.statusCode : code;
+  this.writeHead(statusToUse);
 
   // Send response
   this.end(message);

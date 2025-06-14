@@ -16,9 +16,7 @@ export class MiddlewareStack {
 
   use(middleware: Middleware) {
     this.middlewares.push(middleware);
-  }
-
-  async execute(req: HttpRequestType, res: HttpResponseType, handler: RouteHandler) {
+  }  async execute(req: HttpRequestType, res: HttpResponseType, handler: RouteHandler) {
     let index = 0;
 
     const next = async (): Promise<void> => {

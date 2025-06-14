@@ -2,7 +2,8 @@
 // This file runs before each test file
 
 // Disable logging during tests to prevent console output
-process.env.DISABLE_LOGGING = "true";
+// Temporarily enabled for debugging
+// process.env.DISABLE_LOGGING = "true";
 
 // Suppress console.log/warn/error during tests unless explicitly needed
 const originalConsole = global.console;

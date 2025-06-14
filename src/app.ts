@@ -106,10 +106,8 @@ app.GET("/overlay", async (req, res) => {
 
 // Update overlay data
 app.POST("/overlay", async (req, res) => {
-  const data = await req.json().catch(() => {
-    logger.error("Error parsing JSON from request body");
-    return null;
-  });
+  // Use the body that was already parsed by bodyParser middleware
+  const data = req.body || null;
   
   if (!data) {
     res.status(400).send("Invalid JSON");
@@ -117,6 +115,7 @@ app.POST("/overlay", async (req, res) => {
   }
   
   const updated = app.updateOverlay(data);
+  
   if (updated) {
     res.send("Overlay updated");
   } else {

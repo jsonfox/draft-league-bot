@@ -61,9 +61,7 @@ export class AppServer {
         if (req.url === "/favicon.ico") {
           res.sendStatus(204);
           return;
-        }
-
-        const path = req.url ?? "/";
+        }        const path = req.url ?? "/";
 
         // Execute handler
         const method: HttpMethod =
@@ -87,18 +85,17 @@ export class AppServer {
             res.sendStatus(403);
             return;
           }
-        }
-
-        // Execute middleware stack and handler
+        }        // Execute middleware stack and handler
         const middlewareStack = route.middleware || new MiddlewareStack();
         await this.globalMiddleware.execute(req, res, async () => {
           await middlewareStack.execute(req, res, route.handler);
-        });
-
-        // Acknowledge if response is not sent
-        if (!res.writableEnded) {
-          res.sendStatus(200);
-        }
+        });// Acknowledge if response is not sent
+        // Note: This should rarely happen if handlers properly send responses
+        // if (!res.writableEnded) {
+        //   console.log("DEBUG: Server catch-all sending 200 status because response not ended");
+        //   console.log("DEBUG: Current statusCode:", res.statusCode);
+        //   res.sendStatus(200);
+        // }
       } catch (err) {
         // Log error and send 500 status
         logger.error("Server error:", err);
