@@ -34,6 +34,11 @@ export class BaseValidator {
     return this;
   }
 
+  optional() {
+    const { OptionalValidator } = require("./optional");
+    return new OptionalValidator(this);
+  }
+
   validationError(arg: unknown, message: string) {
     return new Error(`\`${arg}\` ${message}`);
   }

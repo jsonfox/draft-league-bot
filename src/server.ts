@@ -1,4 +1,5 @@
 import { HttpMethod, OverlayData } from "./utils/types";
+import { MiddlewareStack, Middleware, RouteHandler, cors, bodyParser, rateLimit } from "./utils/middleware";
 import { Server } from "socket.io";
 import { env } from "./utils/env";
 import { logger } from "./utils/logger";
@@ -8,16 +9,12 @@ import { v } from "./utils/validator";
 type AppServerRequest = http.IncomingMessage;
 type AppServerResponse = http.ServerResponse<http.IncomingMessage>;
 
-type RouteHandler = (
-  req: AppServerRequest,
-  res: AppServerResponse
-) => Promise<void>;
-
 /** Class for main application server */
 export class AppServer {
   server: http.Server;
   io: Server;
   origin = env.ORIGIN_URL;
+  private globalMiddleware = new MiddlewareStack();
   routes: {
     [path: string]: Partial<
       Record<
@@ -25,6 +22,7 @@ export class AppServer {
         {
           isPublic: boolean;
           handler: RouteHandler;
+          middleware?: MiddlewareStack;
         }
       >
     >;
@@ -51,25 +49,17 @@ export class AppServer {
   };
 
   constructor() {
+    // Setup global middleware
+    this.globalMiddleware.use(cors(this.origin));
+    this.globalMiddleware.use(bodyParser);
+    this.globalMiddleware.use(rateLimit(60000, 100)); // 100 requests per minute
+
     // Create http server
     this.server = http.createServer(async (req, res) => {
       try {
-        // CORS headers
-        res.setHeader("Access-Control-Allow-Origin", this.origin);
-        res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE");
-        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-        // Handle preflight requests
-        if (req.method === "OPTIONS") {
-          res.writeHead(204);
-          res.end();
-          return;
-        }
-
         // Ignore favicon requests
         if (req.url === "/favicon.ico") {
-          res.writeHead(204);
-          res.end();
+          res.sendStatus(204);
           return;
         }
 
@@ -82,8 +72,7 @@ export class AppServer {
 
         // Check if route exists
         if (!route) {
-          res.writeHead(404);
-          res.end("Not found");
+          res.sendStatus(404);
           return;
         }
 
@@ -95,27 +84,28 @@ export class AppServer {
               req.headers.authorization === env.AUTH_TOKEN
             )
           ) {
-            res.writeHead(403);
-            res.end("Forbidden");
+            res.sendStatus(403);
             return;
           }
         }
 
-        route.handler(req, res).then(() => {
-          // Acknowledge if response is not sent
-          if (!res.writableEnded) {
-            res.writeHead(200);
-            res.end("Success");
-            return;
-          }
+        // Execute middleware stack and handler
+        const middlewareStack = route.middleware || new MiddlewareStack();
+        await this.globalMiddleware.execute(req, res, async () => {
+          await middlewareStack.execute(req, res, route.handler);
         });
+
+        // Acknowledge if response is not sent
+        if (!res.writableEnded) {
+          res.sendStatus(200);
+        }
       } catch (err) {
         // Log error and send 500 status
-        logger.error(err);
-        res.writeHead(500);
-        res.end("Internal server error");
+        logger.error("Server error:", err);
+        if (!res.writableEnded) {
+          res.sendStatus(500);
+        }
       }
-      return;
     });
 
     this.listen = this.server.listen.bind(this.server);
@@ -141,6 +131,13 @@ export class AppServer {
     this.io = io;
   }
 
+  /**
+   * Add global middleware to the server
+   */
+  use(middleware: Middleware) {
+    this.globalMiddleware.use(middleware);
+  }
+
   updateOverlay(data: any) {
     const teamSchema = v.object({
       score: v.number().integer().min(0),
@@ -148,19 +145,18 @@ export class AppServer {
       primaryColor: v.string().isNotEmpty(),
       secondaryColor: v.string().isNotEmpty(),
       logoUrl: v.string().isNotEmpty(),
-    });
-
-    const overlaySchema = v.object({
+    });    const overlaySchema = v.object({
       maxScore: v.number().integer().min(1),
       blue: teamSchema,
       red: teamSchema,
-      cameraControlsCover: v.boolean(),
-    });
-
-    try {
+      cameraControlsCover: v.boolean().optional(),
+    });try {
       const parsed = overlaySchema.parse(data);
       if (parsed.blue.name === parsed.red.name) {
         throw new Error("Team names cannot be the same");
+      }
+      if (parsed.blue.score > parsed.maxScore || parsed.red.score > parsed.maxScore) {
+        throw new Error("Team score cannot exceed max score");
       }
       this.overlay = parsed;
       this.io.of("/overlay").emit("overlay", this.overlay);
@@ -172,12 +168,12 @@ export class AppServer {
       return false;
     }
   }
-
   addRoute(
     method: HttpMethod,
     path: `/${string}`,
     handler: RouteHandler,
-    isPublic: boolean
+    isPublic: boolean,
+    middleware?: MiddlewareStack
   ) {
     if (!this.routes[path]) {
       this.routes[path] = {};
@@ -185,26 +181,27 @@ export class AppServer {
     this.routes[path][method] = {
       handler,
       isPublic,
+      middleware,
     };
   }
 
-  GET(path: `/${string}`, handler: RouteHandler, isPublic = false) {
-    this.addRoute("GET", path, handler, isPublic);
+  GET(path: `/${string}`, handler: RouteHandler, isPublic = false, middleware?: MiddlewareStack) {
+    this.addRoute("GET", path, handler, isPublic, middleware);
   }
 
-  POST(path: `/${string}`, handler: RouteHandler, isPublic = false) {
-    this.addRoute("POST", path, handler, isPublic);
+  POST(path: `/${string}`, handler: RouteHandler, isPublic = false, middleware?: MiddlewareStack) {
+    this.addRoute("POST", path, handler, isPublic, middleware);
   }
 
-  PUT(path: `/${string}`, handler: RouteHandler, isPublic = false) {
-    this.addRoute("PUT", path, handler, isPublic);
+  PUT(path: `/${string}`, handler: RouteHandler, isPublic = false, middleware?: MiddlewareStack) {
+    this.addRoute("PUT", path, handler, isPublic, middleware);
   }
 
-  PATCH(path: `/${string}`, handler: RouteHandler, isPublic = false) {
-    this.addRoute("PATCH", path, handler, isPublic);
+  PATCH(path: `/${string}`, handler: RouteHandler, isPublic = false, middleware?: MiddlewareStack) {
+    this.addRoute("PATCH", path, handler, isPublic, middleware);
   }
 
-  DELETE(path: `/${string}`, handler: RouteHandler, isPublic = false) {
-    this.addRoute("DELETE", path, handler, isPublic);
+  DELETE(path: `/${string}`, handler: RouteHandler, isPublic = false, middleware?: MiddlewareStack) {
+    this.addRoute("DELETE", path, handler, isPublic, middleware);
   }
 }

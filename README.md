@@ -1,37 +1,146 @@
-# NEDL Server
+# Draft League Bot Server
 
-**NEW**: Rebuilt Discord client logic to better manage connection to Discord gateway, now largely based on implementation from Discord.js
+**NEW**: Rebuilt Discord client logic to better manage connection to Discord gateway with enhanced stability, health monitoring, and security features.
 
-This server is a containerized application built as a microservice for the main Draft League app. 
+This server is a containerized microservice application for the Draft League ecosystem. It provides Discord bot functionality, health monitoring, and public status endpoints while maintaining high availability and security standards.
 
-I also wanted to use it as an opportunity to build my own services without using frameworks such as Discord.js and Express (I plan to replace SocketIO implementation in the future). While the source code for the main application isn't public, I wanted to make this public as example code for making a Discord gateway bot without using Discord.js, and an HTTP server without using Express.
+Built without frameworks like Discord.js and Express to demonstrate custom implementations and provide educational value.
 
+## 🚀 Features
 
-## Features
+### ✅ Core Features:
+- ✅ **Discord Gateway Client** - Custom Discord bot implementation with stability improvements
+- ✅ **HTTP Server** - Custom Express-like framework with middleware support
+- ✅ **Health Monitoring** - Comprehensive health checks suitable for public status pages
+- ✅ **Security** - Rate limiting, CORS, input validation, and audit logging
+- ✅ **Analytics** - Server metrics and Discord gateway statistics
+- ✅ **Graceful Shutdown** - Proper cleanup with Discord notifications
+- ✅ **Comprehensive Testing** - Full test suite with CI/CD integration
+- ✅ **Type Safety** - Full TypeScript implementation with custom validators
 
-### TODO:
-- Middleware system for http server
-- Create body parser middleware
-- Create `sendStatus()` on response object
-- Create array validator
-- Add `optional()` to type validators to allow undefined
+### 🔧 Middleware System:
+- ✅ **Body Parser** - JSON and URL-encoded request parsing
+- ✅ **CORS** - Cross-origin resource sharing support
+- ✅ **Rate Limiting** - 100 requests per minute per IP
+- ✅ **Logging** - Structured request/response logging
+- ✅ **Error Handling** - Centralized error management
 
+### 🔒 Security Features:
+- ✅ **Input Validation** - Custom validator system with type safety
+- ✅ **Audit Logging** - Discord channel notifications for security events
+- ✅ **Environment Protection** - Secure environment variable handling
+- ✅ **Error Sanitization** - Safe error messages for production
+
+## 📊 Public Endpoints
+
+### Health Status
+```
+GET /health
+```
+Returns basic health status suitable for public monitoring:
+```json
+{
+  "status": "healthy",
+  "uptime": 86400,
+  "timestamp": "2024-01-01T00:00:00.000Z",
+  "version": "1.0.0"
+}
+```
+
+### Analytics
+```
+GET /analytics
+```
+Returns public server metrics:
+```json
+{
+  "server": {
+    "uptime": 86400,
+    "requests_total": 1500,
+    "errors_total": 3
+  },
+  "discord": {
+    "status": "connected",
+    "uptime": 86340,
+    "events_processed": 245
+  }
+}
+```
+
+## 🔧 Technical Architecture
 
 ### Discord Client
 
-**Problem**: Discord interactions have a 3 second timeout window for the application to acknowledge the interaction. Since the main app is a serverless application, I ended up encountering a major issue when adding interaction handling to the NextjS app: serverless function cold starts would sometimes exceed the 3 second response window. I also wanted to maintain the logic for specific interaction handlers within the code for the main app.
+**Problem**: Discord interactions have a 3-second timeout window. Serverless function cold starts would sometimes exceed this window, causing interaction failures.
 
-**Solution**: I decided to create a process that would stay connected to the Discord gateway, thus always online to handle interactions. This client acts as an intermediary that receives interactions from the Discord gateway and immediately sends a deferred response to the user on Discord, indicating a loading state. This app then forwards the interaction payload to the main application via REST. If the HTTP response indicates an error, this app will update the loading state and send an error message to the user Discord. Otherwise, the main app will handle updating the interaction response.
+**Solution**: Persistent Discord gateway connection that:
+- Immediately acknowledges interactions with deferred responses
+- Forwards interaction payloads to main application via REST
+- Handles error states and user feedback
+- Maintains connection stability with automatic reconnection
 
+**Stability Features**:
+- Exponential backoff for reconnection (max 10 attempts)
+- Health monitoring for stalled connections  
+- Automatic reconnection on heartbeat failures
+- Enhanced error reporting via audit log system
+- Prevention of reconnection loops
 
-### Broadcast Server
+### HTTP Server
 
-**Problem**: I wanted to add a dynamic overlay that could be used as an OBS Browser Source for stream overlays. For the overlay to receive updates after the initial page load, it would need to utilize WebSockets. Due to the serverless architecture of the main application, I couldn't just add a WebSocket server inside the NextJS app.
+**Problem**: Need for WebSocket support and custom middleware in serverless environment.
 
-**Solution**: Since I was already using a process for the Discord client, I decided to add HTTP and WebSocket servers to this app. These are currently used for REST endpoints and a SocketIO server for managing the stream overlay. I created a server framework similar to Express that can be expanded upon in the future as more features are added.
+**Solution**: Custom HTTP server framework featuring:
+- Express-like middleware system
+- Built-in security and rate limiting
+- Health monitoring endpoints
+- WebSocket support for real-time features
+- Graceful shutdown handling
 
 ### Data Validation
 
-**Problem**: Even though access to the server is restricted, I wanted to be able to add another layer of data validation for things like POST routes. This would make the server easier to maintain and for future development in the main app that utilizes this server.
+**Problem**: Need for robust input validation without external dependencies.
 
-**Solution**: I made a small validation library based on Zod. One benefit is being able to validate environment variables and access them with type assertions within the code, instead of having to validate process.env variables in the places they are used. I am currently using it to validate overlay data sent to the server, but I plan to expand the library in the future as I use it more in the project.
+**Solution**: Custom validation library inspired by Zod providing:
+- Type-safe environment variable validation
+- Runtime input validation with TypeScript support
+- Array validation with element type checking
+- Optional field handling for undefined values
+- Detailed error messages with context
+- Input sanitization for security
+
+### Testing
+The project includes comprehensive tests:
+- Unit tests for all utilities
+- Integration tests for HTTP endpoints
+- Discord client connection tests
+- Middleware functionality tests
+- Validator system tests
+
+### Health Check Configuration
+
+The `/health` endpoint provides detailed status information:
+
+- **Server Status**: HTTP server health
+- **Discord Status**: Gateway connection state
+- **Memory Usage**: Current memory consumption
+- **Uptime**: Service uptime in seconds
+- **Error Counts**: Recent error statistics
+
+### Health Monitoring
+
+For production monitoring, use these endpoints:
+
+- **Public Health**: `GET /health` - Safe for public status pages
+- **Detailed Health**: `GET /health/detailed` - Requires authentication
+- **Analytics**: `GET /analytics` - Public server metrics
+- **Internal Analytics**: `GET /analytics/internal` - Detailed metrics
+
+### Development Guidelines
+
+- Write tests for new features
+- Follow TypeScript best practices
+- Use the existing validation system
+- Update documentation for API changes
+- Ensure all CI checks pass
+

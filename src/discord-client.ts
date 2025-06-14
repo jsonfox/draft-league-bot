@@ -25,6 +25,7 @@ import {
   DiscordClientEventsMap,
 } from "./utils/types";
 import { sleep, resolveBitfield } from "./utils/helpers";
+import { auditLog } from "./utils/audit-log";
 import { AsyncQueue } from "@sapphire/async-queue";
 import { Collection } from "./utils/collection";
 
@@ -46,6 +47,8 @@ const KnownNetworkErrorCodes = new Set([
   "ECONNREFUSED",
   "ETIMEDOUT",
   "EAI_AGAIN",
+  "ENOTFOUND",
+  "EHOSTUNREACH",
 ]);
 
 enum GatewayTimeouts {
@@ -76,6 +79,15 @@ type RateLimitState = {
   sent: number;
 };
 
+type HealthMetrics = {
+  lastHeartbeat: number;
+  lastHeartbeatAck: number;
+  consecutiveFailedHeartbeats: number;
+  connectTime: number;
+  totalReconnects: number;
+  lastError?: Error;
+};
+
 const getInitialRateLimitState = (): RateLimitState => ({
   resetAt: Date.now() + 60_000,
   sent: 0,
@@ -95,6 +107,14 @@ const ResumeCodes = new Set([
   GatewayCloseCodes.DecodeError,
   GatewayCloseCodes.SessionTimedOut,
 ]);
+
+// Exponential backoff for reconnection attempts
+const getReconnectDelay = (attempt: number): number => {
+  const baseDelay = 1000; // 1 second
+  const maxDelay = 300000; // 5 minutes
+  const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+  return delay + Math.random() * 1000; // Add jitter
+};
 
 export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
   /** https://discord.com/developers/docs/topics/gateway#connecting */
@@ -119,6 +139,7 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
   private session: SessionInfo | null = null;
 
   private reconnectAttempts = 0;
+  private maxReconnectAttempts = 10; // Increased from 5
 
   private replayedEvents = 0;
 
@@ -135,6 +156,7 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
   private failedToConnectDueToNetworkError = false;
 
   private heartbeatInterval: NodeJS.Timeout | null = null;
+  private healthCheckInterval: NodeJS.Timeout | null = null;
 
   private rateLimitState = getInitialRateLimitState();
 
@@ -145,14 +167,71 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
     AbortController
   >();
 
+  private healthMetrics: HealthMetrics = {
+    lastHeartbeat: 0,
+    lastHeartbeatAck: 0,
+    consecutiveFailedHeartbeats: 0,
+    connectTime: 0,
+    totalReconnects: 0,
+  };
+
   #status: DiscordClientStatus = DiscordClientStatus.Idle;
 
   get status() {
     return this.#status;
   }
 
+  get health() {
+    const now = Date.now();
+    const timeSinceLastHeartbeat = now - this.healthMetrics.lastHeartbeat;
+    const timeSinceLastAck = now - this.healthMetrics.lastHeartbeatAck;
+    const uptime = this.healthMetrics.connectTime ? now - this.healthMetrics.connectTime : 0;
+    
+    return {
+      status: this.#status,
+      connected: this.#status === DiscordClientStatus.Ready,
+      uptime,
+      timeSinceLastHeartbeat,
+      timeSinceLastAck,
+      consecutiveFailedHeartbeats: this.healthMetrics.consecutiveFailedHeartbeats,
+      totalReconnects: this.healthMetrics.totalReconnects,
+      lastError: this.healthMetrics.lastError?.message,
+      reconnectAttempts: this.reconnectAttempts,
+    };
+  }
   constructor() {
     super();
+    this.startHealthMonitoring();
+  }
+
+  /**
+   * Starts health monitoring to detect stalled connections and heartbeat issues
+   */
+  private startHealthMonitoring() {
+    this.healthCheckInterval = setInterval(() => {
+      const now = Date.now();
+      const timeSinceLastHeartbeat = now - this.healthMetrics.lastHeartbeat;
+      const timeSinceLastAck = now - this.healthMetrics.lastHeartbeatAck;
+        // Check if we haven't received a heartbeat ack in over 5 minutes
+      if (this.#status === DiscordClientStatus.Ready && timeSinceLastAck > 300000) {
+        logger.warn(`Discord client hasn't received heartbeat ack in ${Math.floor(timeSinceLastAck / 1000)}s, forcing reconnect`);
+        void auditLog.warn("Discord Connection Issue", `Bot connection stalled - no heartbeat ack in ${Math.floor(timeSinceLastAck / 1000)} seconds`);
+        void this.close({
+          reason: "Health check failed - no heartbeat ack",
+          recover: ClientRecovery.Resume,
+        });
+      }
+      
+      // Check for too many consecutive failed heartbeats
+      if (this.healthMetrics.consecutiveFailedHeartbeats >= 5) {
+        logger.warn(`Discord client has ${this.healthMetrics.consecutiveFailedHeartbeats} consecutive failed heartbeats, forcing reconnect`);
+        void auditLog.warn("Discord Connection Issue", `Bot connection unstable - ${this.healthMetrics.consecutiveFailedHeartbeats} consecutive failed heartbeats`);
+        void this.close({
+          reason: "Health check failed - too many failed heartbeats",
+          recover: ClientRecovery.Resume,
+        });
+      }
+    }, 60000); // Check every minute
   }
 
   private async waitForEvent(
@@ -226,10 +305,11 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
           this.replayedEvents++;
         }
 
-        switch (payload.t) {
-          case GatewayDispatchEvents.Ready: {
+        switch (payload.t) {          case GatewayDispatchEvents.Ready: {
             this.#status = DiscordClientStatus.Ready;
             this.reconnectAttempts = 0;
+            this.healthMetrics.totalReconnects = this.healthMetrics.totalReconnects;
+            this.healthMetrics.connectTime = Date.now();
             this.session = {
               id: payload.d.session_id,
               sequence: payload.s,
@@ -242,13 +322,12 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
 
           case GatewayDispatchEvents.Resumed: {
             this.#status = DiscordClientStatus.Ready;
+            this.healthMetrics.totalReconnects++;
             logger.ready(`Resumed and replayed ${this.replayedEvents} events`);
             this.emit(DiscordClientEvents.Resumed);
             this.replayedEvents = 0;
             break;
-          }
-
-          case GatewayDispatchEvents.InteractionCreate: {
+          }          case GatewayDispatchEvents.InteractionCreate: {
             const interaction =
               payload.d as GatewayInteractionCreateDispatchData;
 
@@ -256,6 +335,110 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
             logger.debug("Received interaction", interaction.id);
 
             this.forwardInteraction(interaction);
+            break;
+          }
+
+          case GatewayDispatchEvents.GuildMemberRemove: {
+            const memberData = payload.d as any;
+            logger.info(`Member left: ${memberData.user?.username || 'Unknown'}#${memberData.user?.discriminator || '0000'}`);
+            
+            void auditLog.discordEvent("Member Left", {
+              username: memberData.user?.username || 'Unknown',
+              discriminator: memberData.user?.discriminator || '0000',
+              id: memberData.user?.id || 'Unknown',
+              guild_id: memberData.guild_id
+            });
+            break;
+          }
+
+          case GatewayDispatchEvents.GuildMemberAdd: {
+            const memberData = payload.d as any;
+            logger.info(`Member joined: ${memberData.user?.username || 'Unknown'}#${memberData.user?.discriminator || '0000'}`);
+            
+            void auditLog.discordEvent("Member Joined", {
+              username: memberData.user?.username || 'Unknown',
+              discriminator: memberData.user?.discriminator || '0000',
+              id: memberData.user?.id || 'Unknown',
+              guild_id: memberData.guild_id,
+              joined_at: memberData.joined_at
+            });
+            break;
+          }
+
+          case GatewayDispatchEvents.GuildBanAdd: {
+            const banData = payload.d as any;
+            logger.warn(`Member banned: ${banData.user?.username || 'Unknown'}#${banData.user?.discriminator || '0000'}`);
+            
+            void auditLog.discordEvent("Member Banned", {
+              username: banData.user?.username || 'Unknown',
+              discriminator: banData.user?.discriminator || '0000',
+              id: banData.user?.id || 'Unknown',
+              guild_id: banData.guild_id
+            });
+            break;
+          }
+
+          case GatewayDispatchEvents.GuildBanRemove: {
+            const unbanData = payload.d as any;
+            logger.info(`Member unbanned: ${unbanData.user?.username || 'Unknown'}#${unbanData.user?.discriminator || '0000'}`);
+            
+            void auditLog.discordEvent("Member Unbanned", {
+              username: unbanData.user?.username || 'Unknown',
+              discriminator: unbanData.user?.discriminator || '0000',
+              id: unbanData.user?.id || 'Unknown',
+              guild_id: unbanData.guild_id
+            });
+            break;
+          }
+
+          case GatewayDispatchEvents.ChannelCreate: {
+            const channelData = payload.d as any;
+            logger.info(`Channel created: ${channelData.name || 'Unknown'}`);
+            
+            void auditLog.discordEvent("Channel Created", {
+              name: channelData.name || 'Unknown',
+              id: channelData.id,
+              type: channelData.type,
+              guild_id: channelData.guild_id
+            });
+            break;
+          }
+
+          case GatewayDispatchEvents.ChannelDelete: {
+            const channelData = payload.d as any;
+            logger.info(`Channel deleted: ${channelData.name || 'Unknown'}`);
+            
+            void auditLog.discordEvent("Channel Deleted", {
+              name: channelData.name || 'Unknown',
+              id: channelData.id,
+              type: channelData.type,
+              guild_id: channelData.guild_id
+            });
+            break;
+          }
+
+          case GatewayDispatchEvents.GuildRoleCreate: {
+            const roleData = payload.d as any;
+            logger.info(`Role created: ${roleData.role?.name || 'Unknown'}`);
+            
+            void auditLog.discordEvent("Role Created", {
+              name: roleData.role?.name || 'Unknown',
+              id: roleData.role?.id,
+              permissions: roleData.role?.permissions,
+              guild_id: roleData.guild_id
+            });
+            break;
+          }
+
+          case GatewayDispatchEvents.GuildRoleDelete: {
+            const roleData = payload.d as any;
+            logger.info(`Role deleted: ID ${roleData.role_id}`);
+            
+            void auditLog.discordEvent("Role Deleted", {
+              role_id: roleData.role_id,
+              guild_id: roleData.guild_id
+            });
+            break;
           }
 
           default: {
@@ -337,12 +520,12 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
           payload.d.heartbeat_interval
         );
         break;
-      }
-
-      case GatewayOpcodes.HeartbeatAck: {
+      }      case GatewayOpcodes.HeartbeatAck: {
         this.isAck = true;
+        this.healthMetrics.consecutiveFailedHeartbeats = 0;
 
         const ackAt = Date.now();
+        this.healthMetrics.lastHeartbeatAck = ackAt;
         this.emit(DiscordClientEvents.HeartbeatComplete, {
           ackAt,
           heartbeatAt: this.lastHeartbeatAt,
@@ -353,16 +536,21 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
       }
     }
   }
-
   private onError(error: Error) {
+    this.healthMetrics.lastError = error;
+    
     if ("code" in error && KnownNetworkErrorCodes.has(error.code as string)) {
-      logger.error("Failed to connect to the gateway due to a network error");
+      logger.error("Failed to connect to the gateway due to a network error:", error.message);
       this.failedToConnectDueToNetworkError = true;
     } else {
       logger.error(
         "An error occurred in the WebSocket connection",
         error.stack ?? error.message
       );
+        // Send critical errors to Discord
+      if (process.env.NODE_ENV === "production") {
+        void auditLog.error(error, "Discord WebSocket");
+      }
     }
     this.emit(DiscordClientEvents.Error, { error });
   }
@@ -418,7 +606,6 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
     }
   }
   // End event handlers
-
   /** Internal ws client intialization */
   private async connect(resume = false) {
     if (this.#status !== DiscordClientStatus.Idle) {
@@ -427,11 +614,17 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
 
     if (this.initialConnectResolved) {
       this.reconnectAttempts++;
+    }    if (this.reconnectAttempts > this.maxReconnectAttempts) {
+      logger.error(`Exceeded maximum number of failed reconnect attempts (${this.maxReconnectAttempts})`);
+      void auditLog.critical("Discord Bot Offline", `Bot exceeded maximum reconnect attempts (${this.maxReconnectAttempts}). Bot is offline.`);
+      return;
     }
 
-    if (this.reconnectAttempts > 5) {
-      logger.error("Exceeded maximum number of failed reconnect attempts");
-      return;
+    // Exponential backoff for reconnection attempts
+    if (this.reconnectAttempts > 0) {
+      const delay = getReconnectDelay(this.reconnectAttempts - 1);
+      logger.warn(`Reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}, waiting ${Math.floor(delay)}ms`);
+      await sleep(delay);
     }
 
     logger.init("Connecting to Discord gateway");
@@ -458,6 +651,7 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
 
     ws.onopen = () => {
       this.rateLimitState = getInitialRateLimitState();
+      this.healthMetrics.connectTime = Date.now();
     };
 
     this.ws = ws;
@@ -506,7 +700,6 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
 
     this.initialConnectResolved = true;
   }
-
   async close(options: ClientCloseOptions = {}) {
     if (this.#status === DiscordClientStatus.Idle) {
       logger.warn("Cannot close an idle client");
@@ -530,6 +723,12 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
     this.isAck = true;
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
     }
 
     if (this.initialHeartbeatTimeoutController) {
@@ -550,6 +749,7 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
     // Clear session state if applicable
     if (options.recover !== ClientRecovery.Resume) {
       this.session = null;
+      this.healthMetrics.totalReconnects = 0;
     }
 
     if (this.ws) {
@@ -581,6 +781,7 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
 
     if (options.recover !== undefined) {
       await sleep(500);
+      this.startHealthMonitoring(); // Restart health monitoring
       return this.connect();
     }
   }
@@ -766,7 +967,6 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
     this.sendQueue.shift();
     this.ws.send(JSON.stringify(payload));
   }
-
   /** https://discord.com/developers/docs/topics/gateway#identifying */
   private async identify(payload?: GatewayIdentifyData) {
     // Payload for initial handshake
@@ -777,6 +977,8 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildBans,
+        GatewayIntentBits.GuildModeration,
       ]),
       properties: {
         os: "linux",
@@ -829,14 +1031,20 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
 
     await this.waitForEvent(DiscordClientEvents.Ready, GatewayTimeouts.ready);
   }
-
   /** https://discord.com/developers/docs/topics/gateway#sending-heartbeats */
   private async heartbeat(requested = false) {
     if (!this.isAck && !requested) {
-      return this.close({
-        reason: "Zombie connection",
-        recover: ClientRecovery.Resume,
-      });
+      this.healthMetrics.consecutiveFailedHeartbeats++;
+      logger.warn(`Missed heartbeat ack (${this.healthMetrics.consecutiveFailedHeartbeats} consecutive failures)`);
+      
+      if (this.healthMetrics.consecutiveFailedHeartbeats >= 3) {
+        return this.close({
+          reason: "Zombie connection - too many missed heartbeat acks",
+          recover: ClientRecovery.Resume,
+        });
+      }
+      
+      // Continue trying to send heartbeats even with missed acks
     }
 
     await this.send({
@@ -845,6 +1053,7 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
     });
 
     this.lastHeartbeatAt = Date.now();
+    this.healthMetrics.lastHeartbeat = this.lastHeartbeatAt;
     this.isAck = false;
   }
 
@@ -864,5 +1073,21 @@ export class DiscordClient extends EventEmitter<DiscordClientEventsMap> {
         afk: false,
       },
     } as GatewayUpdatePresence);
+  }
+  /**
+   * Cleanup method to stop all intervals and close connections
+   */
+  cleanup() {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
+    
+    if (this.ws) {
+      this.ws.close(CloseCodes.Normal);
+      this.ws = null;
+    }
+    
+    logger.info("Discord client cleaned up");
   }
 }

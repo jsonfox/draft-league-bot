@@ -10,6 +10,7 @@ declare module "http" {
     status(code: number): this;
     json(data: object): void;
     send(message?: string | Buffer, status?: number): void;
+    sendStatus(code: number): void;
   }
 }
 
@@ -83,6 +84,7 @@ http.ServerResponse.prototype.send = function (
       this.writeHead(204);
     }
     this.end();
+    return;
   }
 
   // Set status code to 200 if not set
@@ -92,6 +94,26 @@ http.ServerResponse.prototype.send = function (
 
   // Send response
   this.end(message);
+};
+
+http.ServerResponse.prototype.sendStatus = function (code: number) {
+  const statusText = {
+    200: "OK",
+    201: "Created",
+    204: "No Content",
+    400: "Bad Request",
+    401: "Unauthorized",
+    403: "Forbidden",
+    404: "Not Found",
+    405: "Method Not Allowed",
+    429: "Too Many Requests",
+    500: "Internal Server Error",
+    502: "Bad Gateway",
+    503: "Service Unavailable"
+  }[code] || "Unknown Status";
+  
+  this.writeHead(code);
+  this.end(statusText);
 };
 
 export default http;

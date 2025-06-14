@@ -9,12 +9,14 @@ import {
   HttpRequestType,
   HttpResponseType,
 } from "./utils/types";
+import { AnalyticsService } from "./utils/analytics";
+import { auditLog } from "./utils/audit-log";
 
 const app = new AppServer();
 const client = new DiscordClient();
-// process.env.NODE_ENV === "development" ? null : new DiscordClient();
+const analytics = new AnalyticsService();
 
-// Health check
+// Health check endpoint - public facing
 app.GET(
   "/",
   async (req, res) => {
@@ -23,6 +25,78 @@ app.GET(
   },
   true
 );
+
+// Comprehensive health status endpoint - public facing for status page
+app.GET(
+  "/health",
+  async (req, res) => {
+    const serverStartTime = process.hrtime.bigint();
+    const memUsage = process.memoryUsage();
+    
+    const health = {
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      version: process.version,
+      memory: {
+        used: Math.round(memUsage.heapUsed / 1024 / 1024),
+        total: Math.round(memUsage.heapTotal / 1024 / 1024),
+        external: Math.round(memUsage.external / 1024 / 1024),
+      },
+      discord: client.health,
+      services: {
+        http: "ok",
+        websocket: "ok",
+        discord: client.health.connected ? "ok" : "degraded",
+      }    };
+    
+    // Set appropriate status code based on Discord health
+    if (!client.health.connected) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(health));
+      return;
+    }
+    
+    res.json(health);
+    return;
+  },
+  true
+);
+
+// Detailed health metrics - protected endpoint
+app.GET("/health/detailed", async (req, res) => {
+  const health = {
+    ...client.health,
+    process: {
+      pid: process.pid,
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      cpu: process.cpuUsage(),
+    },
+    environment: {
+      nodeVersion: process.version,
+      platform: process.platform,
+      arch: process.arch,
+    }
+  };
+  
+  res.json(health);
+  return;
+});
+
+// Public analytics endpoint for status page
+app.GET("/analytics", async (req, res) => {
+  const publicStatus = analytics.getPublicStatus(client);
+  res.json(publicStatus);
+  return;
+}, true);
+
+// Internal analytics endpoint (requires origin auth)
+app.GET("/analytics/internal", async (req, res) => {
+  const fullAnalytics = analytics.getCombinedAnalytics(client);
+  res.json(fullAnalytics);
+  return;
+});
 
 // Get overlay data
 app.GET("/overlay", async (req, res) => {
@@ -34,11 +108,14 @@ app.GET("/overlay", async (req, res) => {
 app.POST("/overlay", async (req, res) => {
   const data = await req.json().catch(() => {
     logger.error("Error parsing JSON from request body");
+    return null;
   });
+  
   if (!data) {
     res.status(400).send("Invalid JSON");
     return;
   }
+  
   const updated = app.updateOverlay(data);
   if (updated) {
     res.send("Overlay updated");
@@ -48,16 +125,14 @@ app.POST("/overlay", async (req, res) => {
   return;
 });
 
-// TODO: Implement actual middleware system
+// Middleware for validating Discord client actions
 const validateClientAction = (req: HttpRequestType, res: HttpResponseType) => {
   if (!client) {
-    res.writeHead(400);
-    res.end("Client not initialized");
+    res.status(400).send("Client not initialized");
     return false;
   } 
   if (!req.headers["x-token"]?.includes(env.BOT_TOKEN)) {
-    res.writeHead(403);
-    res.end("Forbidden");
+    res.sendStatus(403);
     return false;
   }
   return true;
@@ -97,8 +172,7 @@ app.DELETE("/client", async (req, res) => {
   if (!isValid) return;
 
   if (client.status === DiscordClientStatus.Idle) {
-    res.writeHead(400);
-    res.end("Client not connected");
+    res.status(400).send("Client not connected");
     return;
   }
 
@@ -116,6 +190,7 @@ app.POST("/client/presence", async (req, res) => {
 
   const data = await req.json().catch(() => {
     logger.error("Error parsing JSON from request body");
+    return null;
   });
 
   if (!data) {
@@ -134,6 +209,7 @@ app.POST("/client/presence", async (req, res) => {
   try {
     const parsed = statusSchema.parse(data);
     client.updatePresence(parsed);
+    res.send("Presence updated");
   } catch (err) {
     res.status(400).send((err as Error).message);
     return;

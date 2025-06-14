@@ -78,13 +78,11 @@ class Logger {
     const timestampStr =
       symbol("[") +
       this.format(TextFormat.Timestamp, this.timestamp) +
-      symbol("]");
-
-    const levelStr =
+      symbol("]");    const levelStr =
       symbol("[") +
       this.format(levels[level].format, level.toUpperCase()) +
       symbol("]") +
-      " ".repeat(MAX_LEVEL_LENGTH - level.length) + // Padding
+      " ".repeat(MAX_LEVEL_LENGTH - level.length) + 
       symbol(":");
 
     return `${timestampStr} ${levelStr}`;

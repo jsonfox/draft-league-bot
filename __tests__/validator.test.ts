@@ -1,7 +1,72 @@
 import { v } from "../src/utils/validator";
 
+describe("Enhanced validator tests", () => {
+  describe("array validator", () => {
+    test("validates basic arrays", () => {
+      const schema = v.array();
+      expect(() => schema.parse([1, 2, 3])).not.toThrow();
+      expect(() => schema.parse("not an array")).toThrow();
+    });
+
+    test("validates array elements", () => {
+      const schema = v.array().of(v.string());
+      expect(() => schema.parse(["a", "b", "c"])).not.toThrow();
+      expect(() => schema.parse(["a", 1, "c"])).toThrow();
+    });
+
+    test("validates array length", () => {
+      const schema = v.array().minLength(2).maxLength(5);
+      expect(() => schema.parse([1, 2, 3])).not.toThrow();
+      expect(() => schema.parse([1])).toThrow();
+      expect(() => schema.parse([1, 2, 3, 4, 5, 6])).toThrow();
+    });
+
+    test("validates non-empty arrays", () => {
+      const schema = v.array().notEmpty();
+      expect(() => schema.parse([1])).not.toThrow();
+      expect(() => schema.parse([])).toThrow();
+    });
+  });
+
+  describe("optional validator", () => {
+    test("allows undefined values", () => {
+      const schema = v.string().optional();
+      expect(() => schema.parse(undefined)).not.toThrow();
+      expect(() => schema.parse("valid string")).not.toThrow();
+    });
+
+    test("validates non-undefined values", () => {
+      const schema = v.string().isNotEmpty().optional();
+      expect(() => schema.parse(undefined)).not.toThrow();
+      expect(() => schema.parse("valid")).not.toThrow();
+      expect(() => schema.parse("")).toThrow();
+    });
+  });
+
+  describe("complex schema validation", () => {
+    test("validates nested objects with arrays", () => {
+      const schema = v.object({
+        name: v.string().isNotEmpty(),
+        tags: v.array().of(v.string()).optional(),
+        settings: v.object({
+          enabled: v.boolean(),
+          priority: v.number().min(0).max(10),
+        })
+      });
+
+      const validData = {
+        name: "test",
+        tags: ["tag1", "tag2"],
+        settings: {
+          enabled: true,
+          priority: 5        }
+      };      expect(() => schema.parse(validData)).not.toThrow();
+    });
+  });
+});
+
 describe("object validator", () => {
-  it("should throw error if required field is missing", () => {
+    it("should throw error if required field is missing", () => {
     const schema = v.object({
       requiredField: v.string().isNotEmpty(),
     });
@@ -166,9 +231,7 @@ describe("boolean validator", () => {
   describe("isBoolean validation", () => {
     it("should throw error if value is not a boolean", () => {
       expect(() => v.boolean().parse("string")).toThrow();
-    });
-
-    it("should not throw error if value is a boolean", () => {
+    });    it("should not throw error if value is a boolean", () => {
       expect(() => v.boolean().parse(true)).not.toThrow();
     });
   });

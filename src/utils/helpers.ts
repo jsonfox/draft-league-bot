@@ -1,34 +1,23 @@
-import { RESTPostAPIChannelMessageJSONBody } from "discord-api-types/v10";
-import { env } from "./env";
+import { auditLog } from "./audit-log";
 import { logger } from "./logger";
 
 export { setTimeout as sleep } from "node:timers/promises";
 
-// Log uncaught exceptions in Discord
-export const sendErrorToDiscord = async (error: Error) => {
-  try {
-    const res = await fetch(env.WEBHOOK_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        embeds: [
-          {
-            title: "Server Error",
-            description: error.message,
-            color: 0xff0000,
-          },
-        ],
-      } as RESTPostAPIChannelMessageJSONBody),
-    });
-    if (!res.ok) {
-      throw new Error(res.status + " " + res.statusText);
-    }
-    logger.info("Posted error to Discord webhook");
-  } catch (err) {
-    logger.error("Failed post to Discord webhook:", (err as Error).message);
-  }
+// Deprecated - use auditLog.error() instead
+export const sendErrorToDiscord = async (error: Error, context?: { 
+  component?: string; 
+  action?: string; 
+  userId?: string;
+  additionalInfo?: Record<string, any>;
+}) => {
+  logger.warn("sendErrorToDiscord is deprecated, use auditLog.error() instead");
+  await auditLog.error(error, context?.component || context?.action);
+};
+
+// Deprecated - use auditLog.info() instead
+export const sendInfoToDiscord = async (title: string, message: string, color = 0x00ff00) => {
+  logger.warn("sendInfoToDiscord is deprecated, use auditLog.info() instead");
+  await auditLog.info(title, message);
 };
 
 export const resolveBitfield = (bits: number[]) => {
