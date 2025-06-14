@@ -11,11 +11,11 @@ describe("Security Headers", () => {
       client.cleanup();
     }
 
-    // Close server after test suite
+    // Close server after test suite with longer timeout for Node 18.x compatibility
     app.close(() => {
-      setTimeout(done, 100);
+      setTimeout(done, 500);
     });
-  });
+  }, 10000); // 10 second timeout for the afterAll hook
 
   test("should include security headers in responses", async () => {
     const res = await fetch("http://localhost:4001/");

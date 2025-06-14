@@ -15,12 +15,12 @@ describe("app", () => {
       client.cleanup();
     }
 
-    // Close server after test suite
+    // Close server after test suite with longer timeout for Node 18.x compatibility
     app.close(() => {
       console.log("Test suite complete, server closed");
-      setTimeout(done, 100);
+      setTimeout(done, 500);
     });
-  });
+  }, 10000); // 10 second timeout for the afterAll hook
 
   const defaultOverlayData = { ...app.overlay };
 

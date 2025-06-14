@@ -1,5 +1,10 @@
 # Draft League Bot Server
 
+[![CI Pipeline](https://github.com/jsonFox/draft-league-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/jsonFox/draft-league-bot/actions/workflows/ci.yml)
+[![Security Audit](https://img.shields.io/badge/security-audited-brightgreen)](https://github.com/jsonFox/draft-league-bot/actions/workflows/ci.yml)
+[![Node.js Version](https://img.shields.io/badge/node-18.x%20%7C%2020.x-brightgreen)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue)](https://www.typescriptlang.org/)
+
 **NEW**: Rebuilt Discord client logic to better manage connection to Discord gateway with enhanced stability, health monitoring, and security features.
 
 This server is a containerized microservice application for the Draft League ecosystem. It provides Discord bot functionality, health monitoring, and public status endpoints while maintaining high availability and security standards.
