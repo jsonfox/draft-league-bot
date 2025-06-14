@@ -4,9 +4,9 @@ import { logger } from "./logger";
 
 export enum AuditLogLevel {
   INFO = "info",
-  WARN = "warn", 
+  WARN = "warn",
   ERROR = "error",
-  CRITICAL = "critical"
+  CRITICAL = "critical",
 }
 
 interface AuditLogEntry {
@@ -19,7 +19,7 @@ interface AuditLogEntry {
 
 export class AuditLogService {
   private readonly baseUrl = `https://discord.com/api/v10`;
-  
+
   private getColor(level: AuditLogLevel): number {
     switch (level) {
       case AuditLogLevel.INFO:
@@ -39,19 +39,20 @@ export class AuditLogService {
     try {
       const embed = {
         title: entry.title,
-        description: entry.description.length > 4096 
-          ? entry.description.substring(0, 4093) + "..." 
-          : entry.description,
+        description:
+          entry.description.length > 4096
+            ? entry.description.substring(0, 4093) + "..."
+            : entry.description,
         color: this.getColor(entry.level),
         timestamp: entry.timestamp || new Date().toISOString(),
         fields: entry.fields || [],
         footer: {
-          text: `Level: ${entry.level.toUpperCase()}`
-        }
+          text: `Level: ${entry.level.toUpperCase()}`,
+        },
       };
 
       const payload: RESTPostAPIChannelMessageJSONBody = {
-        embeds: [embed]
+        embeds: [embed],
       };
 
       const response = await fetch(
@@ -60,9 +61,9 @@ export class AuditLogService {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bot ${env.BOT_TOKEN}`
+            Authorization: `Bot ${env.BOT_TOKEN}`,
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
         }
       );
 
@@ -76,28 +77,40 @@ export class AuditLogService {
     }
   }
 
-  async info(title: string, description: string, fields?: Array<{ name: string; value: string; inline?: boolean }>): Promise<void> {
+  async info(
+    title: string,
+    description: string,
+    fields?: Array<{ name: string; value: string; inline?: boolean }>
+  ): Promise<void> {
     await this.sendToChannel({
       level: AuditLogLevel.INFO,
       title,
       description,
-      fields
+      fields,
     });
   }
 
-  async warn(title: string, description: string, fields?: Array<{ name: string; value: string; inline?: boolean }>): Promise<void> {
+  async warn(
+    title: string,
+    description: string,
+    fields?: Array<{ name: string; value: string; inline?: boolean }>
+  ): Promise<void> {
     await this.sendToChannel({
       level: AuditLogLevel.WARN,
       title,
       description,
-      fields
+      fields,
     });
   }
 
   async error(error: Error, context?: string): Promise<void> {
     const fields = [
       { name: "Error Type", value: error.constructor.name, inline: true },
-      { name: "Stack Trace", value: error.stack?.substring(0, 1024) || "N/A", inline: false }
+      {
+        name: "Stack Trace",
+        value: error.stack?.substring(0, 1024) || "N/A",
+        inline: false,
+      },
     ];
 
     if (context) {
@@ -108,16 +121,20 @@ export class AuditLogService {
       level: AuditLogLevel.ERROR,
       title: "Application Error",
       description: error.message || "Unknown error occurred",
-      fields
+      fields,
     });
   }
 
-  async critical(title: string, description: string, fields?: Array<{ name: string; value: string; inline?: boolean }>): Promise<void> {
+  async critical(
+    title: string,
+    description: string,
+    fields?: Array<{ name: string; value: string; inline?: boolean }>
+  ): Promise<void> {
     await this.sendToChannel({
       level: AuditLogLevel.CRITICAL,
       title,
       description,
-      fields
+      fields,
     });
   }
 
@@ -125,29 +142,35 @@ export class AuditLogService {
     const fields = Object.entries(data).map(([key, value]) => ({
       name: key,
       value: String(value).substring(0, 1024),
-      inline: true
+      inline: true,
     }));
 
     await this.sendToChannel({
       level: AuditLogLevel.INFO,
       title: `Discord Event: ${event}`,
       description: `Discord gateway event received`,
-      fields
+      fields,
     });
   }
 
-  async serverEvent(title: string, description: string, data?: any): Promise<void> {
-    const fields = data ? Object.entries(data).map(([key, value]) => ({
-      name: key,
-      value: String(value).substring(0, 1024),
-      inline: true
-    })) : undefined;
+  async serverEvent(
+    title: string,
+    description: string,
+    data?: any
+  ): Promise<void> {
+    const fields = data
+      ? Object.entries(data).map(([key, value]) => ({
+          name: key,
+          value: String(value).substring(0, 1024),
+          inline: true,
+        }))
+      : undefined;
 
     await this.sendToChannel({
       level: AuditLogLevel.INFO,
       title: `Server: ${title}`,
       description,
-      fields
+      fields,
     });
   }
 }

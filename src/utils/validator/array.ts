@@ -5,17 +5,19 @@ export class ArrayValidator<T> extends BaseValidator {
 
   parse(arg: unknown) {
     this.isArray(arg);
-    
+
     if (this.elementValidator) {
       for (let i = 0; i < arg.length; i++) {
         try {
           this.elementValidator.parse(arg[i]);
         } catch (err) {
-          throw new Error(`Array element at index ${i}: ${(err as Error).message}`);
+          throw new Error(
+            `Array element at index ${i}: ${(err as Error).message}`
+          );
         }
       }
     }
-    
+
     super.parse(arg);
     return arg as T[];
   }

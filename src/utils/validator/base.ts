@@ -35,6 +35,7 @@ export class BaseValidator {
   }
 
   optional() {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { OptionalValidator } = require("./optional");
     return new OptionalValidator(this);
   }
@@ -59,6 +60,7 @@ export class BaseValidator {
         if (arg === null || Array.isArray(arg)) {
           throw this.isnt(arg, type);
         }
+        break;
       }
       default: {
         if (typeof arg !== type) {

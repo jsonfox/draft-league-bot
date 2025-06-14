@@ -18,7 +18,7 @@ describe("AnalyticsService", () => {
         totalReconnects: 1,
         lastError: undefined,
         reconnectAttempts: 0,
-      }
+      },
     } as jest.Mocked<DiscordClient>;
   });
 

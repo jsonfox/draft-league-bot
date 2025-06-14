@@ -35,7 +35,7 @@ export class AnalyticsService {
 
   private getCpuUsage(): number {
     const current = process.cpuUsage();
-    
+
     if (!this.lastCpuUsage) {
       this.lastCpuUsage = current;
       return 0;
@@ -44,9 +44,9 @@ export class AnalyticsService {
     const userDiff = current.user - this.lastCpuUsage.user;
     const systemDiff = current.system - this.lastCpuUsage.system;
     const totalDiff = userDiff + systemDiff;
-    
+
     this.lastCpuUsage = current;
-    
+
     // Convert microseconds to percentage (rough approximation)
     return Math.round((totalDiff / 1000000) * 100) / 100;
   }
@@ -76,7 +76,7 @@ export class AnalyticsService {
     }
 
     const health = client.health;
-    
+
     return {
       connected: health.connected,
       status: health.status,
@@ -92,8 +92,8 @@ export class AnalyticsService {
   getCombinedAnalytics(client: DiscordClient | null): CombinedAnalytics {
     const server = this.getServerAnalytics();
     const discord = this.getDiscordAnalytics(client);
-    
-    const healthy = 
+
+    const healthy =
       server.status === "running" &&
       discord.connected &&
       server.memoryUsage.heapUsed < 500 * 1024 * 1024 && // Under 500MB heap usage
@@ -109,9 +109,13 @@ export class AnalyticsService {
   /**
    * Returns a simplified status for public consumption
    */
-  getPublicStatus(client: DiscordClient | null): { status: string; uptime: number; healthy: boolean } {
+  getPublicStatus(client: DiscordClient | null): {
+    status: string;
+    uptime: number;
+    healthy: boolean;
+  } {
     const analytics = this.getCombinedAnalytics(client);
-    
+
     return {
       status: analytics.discord.connected ? "online" : "offline",
       uptime: analytics.server.uptime,

@@ -10,8 +10,9 @@ const port = process.env.PORT || 4000;
 // Graceful shutdown handler
 const gracefulShutdown = async (signal: string) => {
   logger.init(`Received ${signal}, shutting down gracefully...`);
-  
-  try {    // Send shutdown notification to Discord
+
+  try {
+    // Send shutdown notification to Discord
     if (process.env.NODE_ENV === "production") {
       await auditLog.serverEvent(
         "Bot Shutdown",
@@ -52,9 +53,9 @@ app.listen(port, async () => {
   if (client) {
     await client.open();
   }
-  
+
   logger.ready(`Server running on port ${port}`);
-    // Send startup notification to Discord in production
+  // Send startup notification to Discord in production
   if (process.env.NODE_ENV === "production") {
     await auditLog.serverEvent(
       "Bot Started",
@@ -66,21 +67,21 @@ app.listen(port, async () => {
 // Handle uncaught exceptions
 process.on("uncaughtException", async (error) => {
   logger.error("Uncaught Exception:", error.stack ?? error.message);
-    if (process.env.NODE_ENV === "production") {
+  if (process.env.NODE_ENV === "production") {
     await auditLog.error(error, "Process - uncaughtException");
   }
-  
+
   await gracefulShutdown("uncaughtException");
 });
 
 // Handle unhandled promise rejections
-process.on("unhandledRejection", async (reason, promise) => {
+process.on("unhandledRejection", async (reason, _promise) => {
   const error = reason instanceof Error ? reason : new Error(String(reason));
   logger.error("Unhandled Promise Rejection:", error.stack ?? error.message);
-    if (process.env.NODE_ENV === "production") {
+  if (process.env.NODE_ENV === "production") {
     await auditLog.error(error, "Process - unhandledRejection");
   }
-  
+
   await gracefulShutdown("unhandledRejection");
 });
 

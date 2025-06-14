@@ -18,10 +18,13 @@ export class Collection<K extends string, V> extends Map<K, V> {
   get json(): {
     [key: string]: V;
   } {
-    return this.entriesArray.reduce((acc, [key, value]) => {
-      acc[key] = value;
-      return acc;
-    }, {} as { [key: string]: V });
+    return this.entriesArray.reduce(
+      (acc, [key, value]) => {
+        acc[key] = value;
+        return acc;
+      },
+      {} as { [key: string]: V }
+    );
   }
 
   find(fn: (value: V) => boolean): V | undefined {

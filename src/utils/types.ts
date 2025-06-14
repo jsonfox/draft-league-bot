@@ -58,6 +58,6 @@ export type DiscordClientEventsMap = {
   [DiscordClientEvents.Hello]: [];
   [DiscordClientEvents.Closed]: [{ code: number }];
   [DiscordClientEvents.HeartbeatComplete]: [
-    payload: { ackAt: number; heartbeatAt: number; latency: number }
+    payload: { ackAt: number; heartbeatAt: number; latency: number },
   ];
-}
+};

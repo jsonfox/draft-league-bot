@@ -1,4 +1,4 @@
-import { AuditLogService, AuditLogLevel } from "../src/utils/audit-log";
+import { AuditLogService } from "../src/utils/audit-log";
 import { env } from "../src/utils/env";
 
 // Mock fetch globally
@@ -28,9 +28,9 @@ describe("AuditLogService", () => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bot ${env.BOT_TOKEN}`
+            Authorization: `Bot ${env.BOT_TOKEN}`,
           },
-          body: expect.stringContaining("Test Title")
+          body: expect.stringContaining("Test Title"),
         })
       );
     });
@@ -38,14 +38,14 @@ describe("AuditLogService", () => {
     test("includes fields in the embed", async () => {
       const fields = [
         { name: "Field 1", value: "Value 1", inline: true },
-        { name: "Field 2", value: "Value 2", inline: false }
+        { name: "Field 2", value: "Value 2", inline: false },
       ];
 
       await auditLog.info("Test", "Description", fields);
 
       const call = mockFetch.mock.calls[0];
       const body = JSON.parse(call[1]?.body as string);
-      
+
       expect(body.embeds[0].fields).toEqual(fields);
     });
   });
@@ -59,13 +59,13 @@ describe("AuditLogService", () => {
 
       const call = mockFetch.mock.calls[0];
       const body = JSON.parse(call[1]?.body as string);
-      
+
       expect(body.embeds[0].title).toBe("Application Error");
       expect(body.embeds[0].description).toBe("Test error");
       expect(body.embeds[0].fields).toContainEqual(
         expect.objectContaining({
           name: "Context",
-          value: "Test Context"
+          value: "Test Context",
         })
       );
     });
@@ -76,14 +76,14 @@ describe("AuditLogService", () => {
       const eventData = {
         username: "testuser",
         id: "123456789",
-        guild_id: "987654321"
+        guild_id: "987654321",
       };
 
       await auditLog.discordEvent("Member Joined", eventData);
 
       const call = mockFetch.mock.calls[0];
       const body = JSON.parse(call[1]?.body as string);
-      
+
       expect(body.embeds[0].title).toBe("Discord Event: Member Joined");
       expect(body.embeds[0].fields).toHaveLength(3);
     });
@@ -101,7 +101,7 @@ describe("AuditLogService", () => {
       mockFetch.mockResolvedValue({
         ok: false,
         status: 500,
-        statusText: "Internal Server Error"
+        statusText: "Internal Server Error",
       } as Response);
 
       // Should not throw

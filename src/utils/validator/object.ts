@@ -2,7 +2,7 @@ import { BaseValidator, Parser } from "./base";
 
 export class ObjectValidator<
   T,
-  S extends Record<string, Parser<T>>
+  S extends Record<string, Parser<T>>,
 > extends BaseValidator {
   schema: S;
 

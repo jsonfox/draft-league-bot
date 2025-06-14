@@ -32,7 +32,7 @@ http.IncomingMessage.prototype.json = async function () {
     this.on("end", () => {
       try {
         resolve(Buffer.concat(body as any).toString());
-      } catch (error) {
+      } catch {
         reject("Invalid JSON");
       }
     });
@@ -55,8 +55,8 @@ http.ServerResponse.prototype.status = function (code: number) {
 
 http.ServerResponse.prototype.json = function (data: object) {
   try {
-    const body = JSON.stringify(data);    // Set content type to application/json if body is not empty
-    if (!!body) {
+    const body = JSON.stringify(data); // Set content type to application/json if body is not empty
+    if (body) {
       const statusToUse = this.statusCode !== 200 ? this.statusCode : 200;
       this.writeHead(statusToUse, { "Content-Type": "application/json" });
     }
@@ -95,21 +95,22 @@ http.ServerResponse.prototype.send = function (
 };
 
 http.ServerResponse.prototype.sendStatus = function (code: number) {
-  const statusText = {
-    200: "OK",
-    201: "Created",
-    204: "No Content",
-    400: "Bad Request",
-    401: "Unauthorized",
-    403: "Forbidden",
-    404: "Not Found",
-    405: "Method Not Allowed",
-    429: "Too Many Requests",
-    500: "Internal Server Error",
-    502: "Bad Gateway",
-    503: "Service Unavailable"
-  }[code] || "Unknown Status";
-  
+  const statusText =
+    {
+      200: "OK",
+      201: "Created",
+      204: "No Content",
+      400: "Bad Request",
+      401: "Unauthorized",
+      403: "Forbidden",
+      404: "Not Found",
+      405: "Method Not Allowed",
+      429: "Too Many Requests",
+      500: "Internal Server Error",
+      502: "Bad Gateway",
+      503: "Service Unavailable",
+    }[code] || "Unknown Status";
+
   this.writeHead(code);
   this.end(statusText);
 };

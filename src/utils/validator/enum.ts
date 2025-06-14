@@ -1,9 +1,6 @@
 import { BaseValidator } from "./base";
 
-export class EnumValidator<
-  T,
-  E extends unknown[]
-> extends BaseValidator {
+export class EnumValidator<T, E extends unknown[]> extends BaseValidator {
   enum: E;
 
   constructor(enumValues: E) {

@@ -12,7 +12,7 @@ export class OptionalValidator<T> extends BaseValidator {
     if (arg === undefined) {
       return undefined;
     }
-    
+
     return this.wrappedValidator.parse(arg);
   }
 }

@@ -73,16 +73,16 @@ class Logger {
     const symbol = this.format.bind(this, TextFormat.Gray);
 
     const MAX_LEVEL_LENGTH = 5;
-    const padding = " ".repeat(MAX_LEVEL_LENGTH - level.length);
 
     const timestampStr =
       symbol("[") +
       this.format(TextFormat.Timestamp, this.timestamp) +
-      symbol("]");    const levelStr =
+      symbol("]");
+    const levelStr =
       symbol("[") +
       this.format(levels[level].format, level.toUpperCase()) +
       symbol("]") +
-      " ".repeat(MAX_LEVEL_LENGTH - level.length) + 
+      " ".repeat(MAX_LEVEL_LENGTH - level.length) +
       symbol(":");
 
     return `${timestampStr} ${levelStr}`;
@@ -96,7 +96,7 @@ class Logger {
         if (typeof arg === "string") return arg;
         try {
           return JSON.stringify(arg, null, 2);
-        } catch (err) {
+        } catch {
           return "";
         }
       })

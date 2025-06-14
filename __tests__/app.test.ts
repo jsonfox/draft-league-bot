@@ -14,7 +14,7 @@ describe("app", () => {
     if (client) {
       client.cleanup();
     }
-    
+
     // Close server after test suite
     app.close(() => {
       console.log("Test suite complete, server closed");
@@ -28,23 +28,25 @@ describe("app", () => {
     test("GET / returns 200", async () => {
       const res = await fetch("http://localhost:4000");
       expect(res.status).toBe(200);
-      
+
       const data = await res.text();
       expect(data).toBe("App is running");
-    });    test("GET /health returns health status", async () => {
+    });
+    test("GET /health returns health status", async () => {
       const res = await fetch("http://localhost:4000/health");
       // Expect 503 because Discord client is not connected during tests
       expect(res.status).toBe(503);
-      
+
       const data = await res.json();
       expect(data).toHaveProperty("status");
       expect(data).toHaveProperty("uptime");
       expect(data).toHaveProperty("discord");
       expect(data).toHaveProperty("services");
-    });    test("GET /analytics returns public analytics", async () => {
+    });
+    test("GET /analytics returns public analytics", async () => {
       const res = await fetch("http://localhost:4000/analytics");
       expect(res.status).toBe(200);
-      
+
       const data = await res.json();
       expect(data).toHaveProperty("status");
       expect(data).toHaveProperty("uptime");
@@ -87,7 +89,9 @@ describe("app", () => {
       if (typeof defaultOverlayData[key] !== "object") continue;
       for (const subKey in defaultOverlayData[key]) {
         const expected = defaultOverlayData[key][subKey];
-        expect(expected === "" || expected === 0 || expected === false).toBeTruthy();
+        expect(
+          expected === "" || expected === 0 || expected === false
+        ).toBeTruthy();
       }
     }
   });
@@ -138,46 +142,49 @@ describe("app", () => {
     testInvalidData("with empty data", () => ({}));
     testInvalidData("with null data", () => null);
     testInvalidData("with invalid data structure", () => ({ data: "invalid" }));
-    testInvalidData("with null team data", () => ({ ...newOverlayData, blue: null }));
-    
+    testInvalidData("with null team data", () => ({
+      ...newOverlayData,
+      blue: null,
+    }));
+
     testInvalidData("with negative team score", () => ({
       ...newOverlayData,
-      blue: { ...newOverlayData.blue, score: -1 }
+      blue: { ...newOverlayData.blue, score: -1 },
     }));
 
     testInvalidData("with team score greater than max score", () => ({
       ...newOverlayData,
-      blue: { ...newOverlayData.blue, score: 5 }
+      blue: { ...newOverlayData.blue, score: 5 },
     }));
 
     testInvalidData("with empty team name", () => ({
       ...newOverlayData,
-      blue: { ...newOverlayData.blue, name: "" }
+      blue: { ...newOverlayData.blue, name: "" },
     }));
 
     testInvalidData("with empty team primary color", () => ({
       ...newOverlayData,
-      blue: { ...newOverlayData.blue, primaryColor: "" }
+      blue: { ...newOverlayData.blue, primaryColor: "" },
     }));
 
     testInvalidData("with empty team secondary color", () => ({
       ...newOverlayData,
-      blue: { ...newOverlayData.blue, secondaryColor: "" }
+      blue: { ...newOverlayData.blue, secondaryColor: "" },
     }));
 
     testInvalidData("with empty team logo URL", () => ({
       ...newOverlayData,
-      blue: { ...newOverlayData.blue, logoUrl: "" }
+      blue: { ...newOverlayData.blue, logoUrl: "" },
     }));
 
     testInvalidData("with max score not a number", () => ({
       ...newOverlayData,
-      maxScore: "invalid"
+      maxScore: "invalid",
     }));
 
     testInvalidData("with max score less than 1", () => ({
       ...newOverlayData,
-      maxScore: 0
+      maxScore: 0,
     }));
 
     test("with valid data", async () => {

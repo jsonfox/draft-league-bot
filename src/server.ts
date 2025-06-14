@@ -1,13 +1,17 @@
 import { HttpMethod, OverlayData } from "./utils/types";
-import { MiddlewareStack, Middleware, RouteHandler, cors, bodyParser, rateLimit } from "./utils/middleware";
+import {
+  MiddlewareStack,
+  Middleware,
+  RouteHandler,
+  cors,
+  bodyParser,
+  rateLimit,
+} from "./utils/middleware";
 import { Server } from "socket.io";
 import { env } from "./utils/env";
 import { logger } from "./utils/logger";
 import http from "./utils/http";
 import { v } from "./utils/validator";
-
-type AppServerRequest = http.IncomingMessage;
-type AppServerResponse = http.ServerResponse<http.IncomingMessage>;
 
 /** Class for main application server */
 export class AppServer {
@@ -61,7 +65,8 @@ export class AppServer {
         if (req.url === "/favicon.ico") {
           res.sendStatus(204);
           return;
-        }        const path = req.url ?? "/";
+        }
+        const path = req.url ?? "/";
 
         // Execute handler
         const method: HttpMethod =
@@ -85,11 +90,11 @@ export class AppServer {
             res.sendStatus(403);
             return;
           }
-        }        // Execute middleware stack and handler
+        } // Execute middleware stack and handler
         const middlewareStack = route.middleware || new MiddlewareStack();
         await this.globalMiddleware.execute(req, res, async () => {
           await middlewareStack.execute(req, res, route.handler);
-        });// Acknowledge if response is not sent
+        }); // Acknowledge if response is not sent
         // Note: This should rarely happen if handlers properly send responses
         // if (!res.writableEnded) {
         //   console.log("DEBUG: Server catch-all sending 200 status because response not ended");
@@ -142,17 +147,22 @@ export class AppServer {
       primaryColor: v.string().isNotEmpty(),
       secondaryColor: v.string().isNotEmpty(),
       logoUrl: v.string().isNotEmpty(),
-    });    const overlaySchema = v.object({
+    });
+    const overlaySchema = v.object({
       maxScore: v.number().integer().min(1),
       blue: teamSchema,
       red: teamSchema,
       cameraControlsCover: v.boolean().optional(),
-    });try {
+    });
+    try {
       const parsed = overlaySchema.parse(data);
       if (parsed.blue.name === parsed.red.name) {
         throw new Error("Team names cannot be the same");
       }
-      if (parsed.blue.score > parsed.maxScore || parsed.red.score > parsed.maxScore) {
+      if (
+        parsed.blue.score > parsed.maxScore ||
+        parsed.red.score > parsed.maxScore
+      ) {
         throw new Error("Team score cannot exceed max score");
       }
       this.overlay = parsed;
@@ -182,23 +192,48 @@ export class AppServer {
     };
   }
 
-  GET(path: `/${string}`, handler: RouteHandler, isPublic = false, middleware?: MiddlewareStack) {
+  GET(
+    path: `/${string}`,
+    handler: RouteHandler,
+    isPublic = false,
+    middleware?: MiddlewareStack
+  ) {
     this.addRoute("GET", path, handler, isPublic, middleware);
   }
 
-  POST(path: `/${string}`, handler: RouteHandler, isPublic = false, middleware?: MiddlewareStack) {
+  POST(
+    path: `/${string}`,
+    handler: RouteHandler,
+    isPublic = false,
+    middleware?: MiddlewareStack
+  ) {
     this.addRoute("POST", path, handler, isPublic, middleware);
   }
 
-  PUT(path: `/${string}`, handler: RouteHandler, isPublic = false, middleware?: MiddlewareStack) {
+  PUT(
+    path: `/${string}`,
+    handler: RouteHandler,
+    isPublic = false,
+    middleware?: MiddlewareStack
+  ) {
     this.addRoute("PUT", path, handler, isPublic, middleware);
   }
 
-  PATCH(path: `/${string}`, handler: RouteHandler, isPublic = false, middleware?: MiddlewareStack) {
+  PATCH(
+    path: `/${string}`,
+    handler: RouteHandler,
+    isPublic = false,
+    middleware?: MiddlewareStack
+  ) {
     this.addRoute("PATCH", path, handler, isPublic, middleware);
   }
 
-  DELETE(path: `/${string}`, handler: RouteHandler, isPublic = false, middleware?: MiddlewareStack) {
+  DELETE(
+    path: `/${string}`,
+    handler: RouteHandler,
+    isPublic = false,
+    middleware?: MiddlewareStack
+  ) {
     this.addRoute("DELETE", path, handler, isPublic, middleware);
   }
 }

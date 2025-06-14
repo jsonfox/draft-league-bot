@@ -1,4 +1,4 @@
-import { ClientRecovery, DiscordClient } from "./discord-client";
+import { DiscordClient } from "./discord-client";
 import { AppServer } from "./server";
 import { logger } from "./utils/logger";
 import { env } from "./utils/env";
@@ -10,7 +10,6 @@ import {
   HttpResponseType,
 } from "./utils/types";
 import { AnalyticsService } from "./utils/analytics";
-import { auditLog } from "./utils/audit-log";
 
 const app = new AppServer();
 const client = new DiscordClient();
@@ -30,9 +29,8 @@ app.GET(
 app.GET(
   "/health",
   async (req, res) => {
-    const serverStartTime = process.hrtime.bigint();
     const memUsage = process.memoryUsage();
-    
+
     const health = {
       status: "ok",
       timestamp: new Date().toISOString(),
@@ -48,15 +46,16 @@ app.GET(
         http: "ok",
         websocket: "ok",
         discord: client.health.connected ? "ok" : "degraded",
-      }    };
-    
+      },
+    };
+
     // Set appropriate status code based on Discord health
     if (!client.health.connected) {
-      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.writeHead(503, { "Content-Type": "application/json" });
       res.end(JSON.stringify(health));
       return;
     }
-    
+
     res.json(health);
     return;
   },
@@ -77,19 +76,23 @@ app.GET("/health/detailed", async (req, res) => {
       nodeVersion: process.version,
       platform: process.platform,
       arch: process.arch,
-    }
+    },
   };
-  
+
   res.json(health);
   return;
 });
 
 // Public analytics endpoint for status page
-app.GET("/analytics", async (req, res) => {
-  const publicStatus = analytics.getPublicStatus(client);
-  res.json(publicStatus);
-  return;
-}, true);
+app.GET(
+  "/analytics",
+  async (req, res) => {
+    const publicStatus = analytics.getPublicStatus(client);
+    res.json(publicStatus);
+    return;
+  },
+  true
+);
 
 // Internal analytics endpoint (requires origin auth)
 app.GET("/analytics/internal", async (req, res) => {
@@ -108,14 +111,14 @@ app.GET("/overlay", async (req, res) => {
 app.POST("/overlay", async (req, res) => {
   // Use the body that was already parsed by bodyParser middleware
   const data = req.body || null;
-  
+
   if (!data) {
     res.status(400).send("Invalid JSON");
     return;
   }
-  
+
   const updated = app.updateOverlay(data);
-  
+
   if (updated) {
     res.send("Overlay updated");
   } else {
@@ -129,7 +132,7 @@ const validateClientAction = (req: HttpRequestType, res: HttpResponseType) => {
   if (!client) {
     res.status(400).send("Client not initialized");
     return false;
-  } 
+  }
   if (!req.headers["x-token"]?.includes(env.BOT_TOKEN)) {
     res.sendStatus(403);
     return false;

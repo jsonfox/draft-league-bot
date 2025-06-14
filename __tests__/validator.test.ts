@@ -51,7 +51,7 @@ describe("Enhanced validator tests", () => {
         settings: v.object({
           enabled: v.boolean(),
           priority: v.number().min(0).max(10),
-        })
+        }),
       });
 
       const validData = {
@@ -59,14 +59,16 @@ describe("Enhanced validator tests", () => {
         tags: ["tag1", "tag2"],
         settings: {
           enabled: true,
-          priority: 5        }
-      };      expect(() => schema.parse(validData)).not.toThrow();
+          priority: 5,
+        },
+      };
+      expect(() => schema.parse(validData)).not.toThrow();
     });
   });
 });
 
 describe("object validator", () => {
-    it("should throw error if required field is missing", () => {
+  it("should throw error if required field is missing", () => {
     const schema = v.object({
       requiredField: v.string().isNotEmpty(),
     });
@@ -231,7 +233,8 @@ describe("boolean validator", () => {
   describe("isBoolean validation", () => {
     it("should throw error if value is not a boolean", () => {
       expect(() => v.boolean().parse("string")).toThrow();
-    });    it("should not throw error if value is a boolean", () => {
+    });
+    it("should not throw error if value is a boolean", () => {
       expect(() => v.boolean().parse(true)).not.toThrow();
     });
   });

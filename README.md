@@ -9,6 +9,7 @@ Built without frameworks like Discord.js and Express to demonstrate custom imple
 ## 🚀 Features
 
 ### ✅ Core Features:
+
 - ✅ **Discord Gateway Client** - Custom Discord bot implementation with stability improvements
 - ✅ **HTTP Server** - Custom Express-like framework with middleware support
 - ✅ **Health Monitoring** - Comprehensive health checks suitable for public status pages
@@ -19,6 +20,7 @@ Built without frameworks like Discord.js and Express to demonstrate custom imple
 - ✅ **Type Safety** - Full TypeScript implementation with custom validators
 
 ### 🔧 Middleware System:
+
 - ✅ **Body Parser** - JSON and URL-encoded request parsing
 - ✅ **CORS** - Cross-origin resource sharing support
 - ✅ **Rate Limiting** - 100 requests per minute per IP
@@ -26,6 +28,7 @@ Built without frameworks like Discord.js and Express to demonstrate custom imple
 - ✅ **Error Handling** - Centralized error management
 
 ### 🔒 Security Features:
+
 - ✅ **Input Validation** - Custom validator system with type safety
 - ✅ **Audit Logging** - Discord channel notifications for security events
 - ✅ **Environment Protection** - Secure environment variable handling
@@ -34,10 +37,13 @@ Built without frameworks like Discord.js and Express to demonstrate custom imple
 ## 📊 Public Endpoints
 
 ### Health Status
+
 ```
 GET /health
 ```
+
 Returns basic health status suitable for public monitoring:
+
 ```json
 {
   "status": "healthy",
@@ -48,10 +54,13 @@ Returns basic health status suitable for public monitoring:
 ```
 
 ### Analytics
+
 ```
 GET /analytics
 ```
+
 Returns public server metrics:
+
 ```json
 {
   "server": {
@@ -74,14 +83,16 @@ Returns public server metrics:
 **Problem**: Discord interactions have a 3-second timeout window. Serverless function cold starts would sometimes exceed this window, causing interaction failures.
 
 **Solution**: Persistent Discord gateway connection that:
+
 - Immediately acknowledges interactions with deferred responses
 - Forwards interaction payloads to main application via REST
 - Handles error states and user feedback
 - Maintains connection stability with automatic reconnection
 
 **Stability Features**:
+
 - Exponential backoff for reconnection (max 10 attempts)
-- Health monitoring for stalled connections  
+- Health monitoring for stalled connections
 - Automatic reconnection on heartbeat failures
 - Enhanced error reporting via audit log system
 - Prevention of reconnection loops
@@ -91,6 +102,7 @@ Returns public server metrics:
 **Problem**: Need for WebSocket support and custom middleware in serverless environment.
 
 **Solution**: Custom HTTP server framework featuring:
+
 - Express-like middleware system
 - Built-in security and rate limiting
 - Health monitoring endpoints
@@ -102,6 +114,7 @@ Returns public server metrics:
 **Problem**: Need for robust input validation without external dependencies.
 
 **Solution**: Custom validation library inspired by Zod providing:
+
 - Type-safe environment variable validation
 - Runtime input validation with TypeScript support
 - Array validation with element type checking
@@ -110,7 +123,9 @@ Returns public server metrics:
 - Input sanitization for security
 
 ### Testing
+
 The project includes comprehensive tests:
+
 - Unit tests for all utilities
 - Integration tests for HTTP endpoints
 - Discord client connection tests
@@ -143,4 +158,3 @@ For production monitoring, use these endpoints:
 - Use the existing validation system
 - Update documentation for API changes
 - Ensure all CI checks pass
-
