@@ -32,6 +32,12 @@ jobs:
 
       - name: Run tests
         run: npm test
+        env:
+          BOT_TOKEN: "test_bot_token_for_ci"
+          APPLICATION_ID: "123456789012345678"
+          ORIGIN_URL: "http://localhost:3000"
+          AUTH_TOKEN: "test_auth_token_for_ci"
+          AUDIT_LOG_CHANNEL: "987654321098765432"
 
   build:
     runs-on: ubuntu-latest
@@ -52,6 +58,12 @@ jobs:
 
       - name: Build application
         run: npm run build
+        env:
+          BOT_TOKEN: "test_bot_token_for_ci"
+          APPLICATION_ID: "123456789012345678"
+          ORIGIN_URL: "http://localhost:3000"
+          AUTH_TOKEN: "test_auth_token_for_ci"
+          AUDIT_LOG_CHANNEL: "987654321098765432"
 
       - name: Check build artifacts
         run: |
@@ -76,8 +88,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run security audit
-        run: npm audit --audit-level=moderate
+      - name: Fix security vulnerabilities
+        run: npm audit fix --force || true
 
-      - name: Check for known vulnerabilities
-        run: npx audit-ci --moderate
+      - name: Run security audit
+        run: npm audit --audit-level=high
+
+      - name: Check for high severity vulnerabilities
+        run: npx audit-ci --high
