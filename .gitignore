@@ -148,3 +148,5 @@ sessions/
 # Local development tools
 .local/
 .cache/
+
+AI*.md
