@@ -30,13 +30,13 @@ describe("Enhanced validator tests", () => {
 
   describe("optional validator", () => {
     test("allows undefined values", () => {
-      const schema = v.string().optional();
+      const schema = v.optional(v.string());
       expect(() => schema.parse(undefined)).not.toThrow();
       expect(() => schema.parse("valid string")).not.toThrow();
     });
 
     test("validates non-undefined values", () => {
-      const schema = v.string().isNotEmpty().optional();
+      const schema = v.optional(v.string().isNotEmpty());
       expect(() => schema.parse(undefined)).not.toThrow();
       expect(() => schema.parse("valid")).not.toThrow();
       expect(() => schema.parse("")).toThrow();
@@ -47,7 +47,7 @@ describe("Enhanced validator tests", () => {
     test("validates nested objects with arrays", () => {
       const schema = v.object({
         name: v.string().isNotEmpty(),
-        tags: v.array().of(v.string()).optional(),
+        tags: v.optional(v.array<string>().of(v.string())),
         settings: v.object({
           enabled: v.boolean(),
           priority: v.number().min(0).max(10),

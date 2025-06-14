@@ -59,20 +59,24 @@ app.GET(
   RouteAccess.Public
 );
 
-// Detailed health metrics - protected endpoint
+// Detailed health metrics - protected endpoint (minimized sensitive data exposure)
 app.GET("/health/detailed", async (req, res) => {
   const health = {
     ...client.health,
     process: {
-      pid: process.pid,
+      // Remove PID for security - don't expose process ID
       uptime: process.uptime(),
-      memory: process.memoryUsage(),
-      cpu: process.cpuUsage(),
+      memory: {
+        // Only expose high-level memory usage, not detailed breakdown
+        used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+        total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+      },
+      // Remove detailed CPU usage - potential for timing attacks
     },
     environment: {
       nodeVersion: process.version,
       platform: process.platform,
-      arch: process.arch,
+      // Remove architecture details
     },
   };
 

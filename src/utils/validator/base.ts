@@ -34,12 +34,6 @@ export class BaseValidator {
     return this;
   }
 
-  optional() {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { OptionalValidator } = require("./optional");
-    return new OptionalValidator(this);
-  }
-
   validationError(arg: unknown, message: string) {
     return new Error(`\`${arg}\` ${message}`);
   }

@@ -113,3 +113,32 @@ export const rateLimit = (
     next();
   };
 };
+
+export const securityHeaders: Middleware = (req, res, next) => {
+  // Prevent clickjacking attacks
+  res.setHeader("X-Frame-Options", "DENY");
+
+  // Prevent MIME type sniffing
+  res.setHeader("X-Content-Type-Options", "nosniff");
+
+  // Enable XSS protection
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+
+  // Strict Transport Security (HTTPS only - commented for development)
+  // Uncomment for production with HTTPS:
+  // res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+
+  // Content Security Policy - restrict resource loading
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'"
+  );
+
+  // Referrer Policy - control referrer information
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+
+  // Remove server identification to prevent fingerprinting
+  res.removeHeader("X-Powered-By");
+
+  next();
+};

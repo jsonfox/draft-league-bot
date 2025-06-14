@@ -5,6 +5,7 @@ import { BooleanValidator } from "./boolean";
 import { ArrayValidator } from "./array";
 import { Parser } from "./base";
 import { EnumValidator } from "./enum";
+import { OptionalValidator } from "./optional";
 
 export const v = {
   string: () => new StringValidator(),
@@ -15,4 +16,5 @@ export const v = {
   array: <T>() => new ArrayValidator<T>(),
   enum: <T, E extends unknown[]>(enumValues: E) =>
     new EnumValidator<T, E>(enumValues),
+  optional: <T>(validator: Parser<T>) => new OptionalValidator<T>(validator),
 };

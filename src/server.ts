@@ -6,6 +6,7 @@ import {
   cors,
   bodyParser,
   rateLimit,
+  securityHeaders,
 } from "./utils/middleware";
 import { Server } from "socket.io";
 import { env } from "./utils/env";
@@ -64,6 +65,7 @@ export class AppServer {
 
   constructor() {
     // Setup global middleware
+    this.globalMiddleware.use(securityHeaders);
     this.globalMiddleware.use(cors(this.origin));
     this.globalMiddleware.use(bodyParser);
     this.globalMiddleware.use(rateLimit(60000, 100)); // 100 requests per minute
@@ -112,8 +114,14 @@ export class AppServer {
         //   res.sendStatus(200);
         // }
       } catch (err) {
-        // Log error and send 500 status
-        logger.error("Server error:", err);
+        // Log error and send 500 status - sanitize error to prevent information disclosure
+        const errorMessage =
+          err instanceof Error ? err.message : "Unknown error";
+        const sanitizedError = errorMessage.replace(
+          /\b(?:token|password|key|secret|auth)\w*\b/gi,
+          "[REDACTED]"
+        );
+        logger.error("Server error:", sanitizedError);
         if (!res.writableEnded) {
           res.sendStatus(500);
         }
@@ -162,7 +170,7 @@ export class AppServer {
       maxScore: v.number().integer().min(1),
       blue: teamSchema,
       red: teamSchema,
-      cameraControlsCover: v.boolean().optional(),
+      cameraControlsCover: v.optional(v.boolean()),
     });
 
     try {
