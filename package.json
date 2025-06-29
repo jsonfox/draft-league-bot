@@ -8,8 +8,7 @@
     "build": "tsc --build",
     "test": "jest --runInBand --detectOpenHandles --forceExit",
     "lint": "eslint 'src/**/*.{ts,js}' '__tests__/**/*.{ts,js}'",
-    "format": "prettier --write .",
-    "prepare": "husky"
+    "format": "prettier --write ."
   },
   "author": "",
   "license": "ISC",
